@@ -14,6 +14,7 @@ const axios = require("axios");
 const dotenv = require("dotenv");
 // Make sure TranslationService correctly uses the optimized TranslationPipeline
 const { TranslationService } = require("./trans_pipeline"); // Assumes trans_pipeline requires the optimized translationPipeline.js
+const UploadStatusTracker = require("./uploadStatusTracker");
 
 // Load environment variables (from .env file preferably)
 dotenv.config();
@@ -27,6 +28,7 @@ const OUTPUT_DIR = process.env.OUTPUT_DIR || "./translations"; // Output directo
 const SOURCE_LOCALE = process.env.SOURCE_LOCALE || "en"; // Define the source locale
 const MAX_REPORTS = process.env.MAX_REPORTS || 50; // Maximum number of reports to fetch and translate
 
+const statusTracker = new UploadStatusTracker("/app/upload-status.json");
 // Define the target languages (if not provided in env, use these defaults)
 const DEFAULT_TARGET_LANGS = [
   "es",
