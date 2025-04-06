@@ -7,11 +7,11 @@ services:
       dockerfile: Dockerfile
     container_name: strapi-translation-service
     volumes:
-      - ./translations:/app/translations
-      - ./translation-cache:/app/translation-cache
+      - translation_data:/app/translations
+      - translation_cache:/app/translation-cache
+      - ./upload-status.json:/app/upload-status.json
     restart: unless-stopped
     command: node fetch-translate.js
-    env_file: ./.env
     environment:
       - SOURCE_URL=${SOURCE_URL}
       - SOURCE_TOKEN=${SOURCE_TOKEN}
@@ -31,10 +31,10 @@ services:
       dockerfile: Dockerfile
     container_name: strapi-upload-service
     volumes:
-      - ./translations:/app/translations
+      - translation_data:/app/translations
+      - ./upload-status.json:/app/upload-status.json
     restart: unless-stopped
-    command: node uploadTranslations.js es fr de zh-CN zh-TW ja ru ar pl it vi ko
-    env_file: ./.env
+    command: node uploadService.js
     environment:
       - TARGET_URL=${TARGET_URL}
       - TARGET_TOKEN=${TARGET_TOKEN}
@@ -50,19 +50,29 @@ services:
   translation-viewer:
     build:
       context: .
-      dockerfile: translation-viewer/Dockerfile
+      dockerfile: Dockerfile
     container_name: translation-viewer
     volumes:
-      - ./translations:/app/translations
+      - translation_data:/app/translations
+      - ./upload-status.json:/app/upload-status.json
     environment:
       - PORT=3000
       - TRANSLATIONS_DIR=/app/translations
     ports:
       - "3000:3000"
+    command: node translation-viewer/app.js
     restart: unless-stopped
     networks:
       - translation-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.translation-viewer.rule=Host(`${COOLIFY_FQDN}`)
+      - traefik.http.routers.translation-viewer.entryPoints=http
 
 networks:
   translation-network:
     driver: bridge
+
+volumes:
+  translation_data:
+  translation_cache:

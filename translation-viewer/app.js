@@ -18,6 +18,12 @@ app.set("view engine", "ejs");
 // Define the translations directory
 const TRANSLATIONS_DIR = process.env.TRANSLATIONS_DIR || "./translations";
 
+// Import routes
+const uploadStatusRoutes = require("./routes/upload-status");
+
+// Use routes
+app.use("/api/upload-status", uploadStatusRoutes);
+
 // Route to get all content types
 app.get("/api/content-types", (req, res) => {
   try {
@@ -177,6 +183,11 @@ app.get("/content/:contentType/:itemSlug", (req, res) => {
     contentType: req.params.contentType,
     itemSlug: req.params.itemSlug,
   });
+});
+
+// Upload status dashboard route
+app.get("/upload-status", (req, res) => {
+  res.render("upload-status");
 });
 
 // Start the server

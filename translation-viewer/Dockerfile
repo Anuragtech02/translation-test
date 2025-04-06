@@ -2,22 +2,32 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Create necessary directories
+RUN mkdir -p ./translations ./translation-cache ./logs
+
 # Copy package files and install dependencies
-COPY translation-viewer/package*.json ./
+COPY package*.json ./
 RUN npm install
 
-# Copy application files
-COPY translation-viewer/ ./
+# Copy application code
+COPY . .
 
-# Create public directory
-RUN mkdir -p ./public
+# Create translation-viewer directory structure
+RUN mkdir -p ./translation-viewer/views
+RUN mkdir -p ./translation-viewer/routes
+RUN mkdir -p ./translation-viewer/public
 
 # Set environment variables
-ENV PORT=3000
+ENV NODE_ENV=production
+ENV OUTPUT_DIR=/app/translations
+ENV CACHE_DIR=/app/translation-cache
 ENV TRANSLATIONS_DIR=/app/translations
 
-# Expose the port
+# Volume mounts
+VOLUME ["/app/translations", "/app/translation-cache", "/app/logs"]
+
+# Expose the viewer port
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "app.js"]
+# Command will be specified in docker-compose.yml
+CMD ["node", "fetch-translate.js"]
