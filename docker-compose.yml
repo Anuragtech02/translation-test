@@ -50,7 +50,7 @@ services:
   translation-viewer:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: translation-viewer/Dockerfile
     container_name: translation-viewer
     volumes:
       - translation_data:/app/translations
@@ -60,7 +60,6 @@ services:
       - TRANSLATIONS_DIR=/app/translations
     ports:
       - "3000:3000"
-    command: node translation-viewer/app.js
     restart: unless-stopped
     networks:
       - translation-network

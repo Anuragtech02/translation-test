@@ -6,12 +6,15 @@
   "scripts": {
     "start": "node fetch-translate.js",
     "upload": "node uploadTranslations.js",
-    "translate": "node strapi-translate.js"
+    "translate": "node strapi-translate.js",
+    "viewer": "node translation-viewer/app.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.1.0",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
+    "ejs": "^3.1.9",
+    "express": "^4.18.2",
     "glob": "^10.3.10",
     "jsdom": "^22.1.0",
     "lodash": "^4.17.21"
