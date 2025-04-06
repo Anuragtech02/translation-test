@@ -7,20 +7,21 @@ services:
       dockerfile: Dockerfile
     container_name: strapi-translation-service
     volumes:
-      - translation_data:/app/translations
-      - translation_cache:/app/translation-cache
+      - ./translations:/app/translations
+      - ./translation-cache:/app/translation-cache
     restart: unless-stopped
     command: node fetch-translate.js
+    env_file: ./.env
     environment:
-      - SOURCE_URL=https://web-server-india.univdatos.com
-      - SOURCE_TOKEN=88bfc3a332f47ac7d28ed178c154e8dee2a59eefdf020e6e2bc9bd7f83b8631bc2763ac5b26af2cc3bfb39f50a01c2219632c4ef20504de3f257ea02fe9aba24781bc228848f9502b8f61cafd22f99d6fe8f25df1935b143d28a765831895ed24efa44123d6924193c4345caaf9432d1e533497afd2b0bbfbffdeb60ed57e79d
-      - GOOGLE_API_KEY=AIzaSyDQG7owh-jmF6IR-UY6gYyfkmkcEAxHtVM
+      - SOURCE_URL=${SOURCE_URL}
+      - SOURCE_TOKEN=${SOURCE_TOKEN}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - OUTPUT_DIR=/app/translations
       - CACHE_DIR=/app/translation-cache
-      - SOURCE_LOCALE=en
-      - TARGET_LANGS=es,fr,de,zh-CN,zh-TW,ja,ru,ar,pl,it,vi,ko
-      - MAX_REPORTS=50
-      - RUN_INTERVAL_MS=3600000
+      - SOURCE_LOCALE=${SOURCE_LOCALE:-en}
+      - TARGET_LANGS=${TARGET_LANGS:-es,fr,de,zh-CN,zh-TW,ja,ru,ar,pl,it,vi,ko}
+      - MAX_REPORTS=${MAX_REPORTS:-50}
+      - RUN_INTERVAL_MS=${RUN_INTERVAL_MS:-3600000}
     networks:
       - translation-network
 
@@ -30,16 +31,17 @@ services:
       dockerfile: Dockerfile
     container_name: strapi-upload-service
     volumes:
-      - translation_data:/app/translations
+      - ./translations:/app/translations
     restart: unless-stopped
     command: node uploadTranslations.js es fr de zh-CN zh-TW ja ru ar pl it vi ko
+    env_file: ./.env
     environment:
-      - TARGET_URL=https://web-server-india.univdatos.com
-      - TARGET_TOKEN=88bfc3a332f47ac7d28ed178c154e8dee2a59eefdf020e6e2bc9bd7f83b8631bc2763ac5b26af2cc3bfb39f50a01c2219632c4ef20504de3f257ea02fe9aba24781bc228848f9502b8f61cafd22f99d6fe8f25df1935b143d28a765831895ed24efa44123d6924193c4345caaf9432d1e533497afd2b0bbfbffdeb60ed57e79d
+      - TARGET_URL=${TARGET_URL}
+      - TARGET_TOKEN=${TARGET_TOKEN}
       - OUTPUT_DIR=/app/translations
-      - UPLOAD_DELAY_MS=500
-      - MAX_RETRIES=3
-      - RETRY_DELAY_MS=2000
+      - UPLOAD_DELAY_MS=${UPLOAD_DELAY_MS:-500}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - RETRY_DELAY_MS=${RETRY_DELAY_MS:-2000}
     depends_on:
       - translation-service
     networks:
@@ -51,7 +53,7 @@ services:
       dockerfile: translation-viewer/Dockerfile
     container_name: translation-viewer
     volumes:
-      - translation_data:/app/translations
+      - ./translations:/app/translations
     environment:
       - PORT=3000
       - TRANSLATIONS_DIR=/app/translations
@@ -64,7 +66,3 @@ services:
 networks:
   translation-network:
     driver: bridge
-
-volumes:
-  translation_data:
-  translation_cache:
