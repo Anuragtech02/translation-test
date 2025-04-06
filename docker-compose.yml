@@ -32,16 +32,19 @@ services:
     container_name: strapi-upload-service
     volumes:
       - translation_data:/app/translations
+      # Keep using the bind mount if it works, or switch to named volume
       - ./upload-status.json:/app/upload-status.json
     restart: unless-stopped
-    command: node uploadService.js
+    command: node uploadService.js # Keep this command
     environment:
       - TARGET_URL=${TARGET_URL}
       - TARGET_TOKEN=${TARGET_TOKEN}
-      - OUTPUT_DIR=/app/translations
+      - OUTPUT_DIR=/app/translations # Ensure this matches TRANSLATIONS_DIR
       - UPLOAD_DELAY_MS=${UPLOAD_DELAY_MS:-500}
       - MAX_RETRIES=${MAX_RETRIES:-3}
       - RETRY_DELAY_MS=${RETRY_DELAY_MS:-2000}
+      # Add the new variable (e.g., check every 2 minutes)
+      - UPLOAD_CHECK_INTERVAL_MS=${UPLOAD_CHECK_INTERVAL_MS:-120000}
     depends_on:
       - translation-service
     networks:
