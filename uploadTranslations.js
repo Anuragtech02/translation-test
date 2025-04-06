@@ -1249,11 +1249,24 @@ async function uploadMain() {
   );
 }
 
+module.exports = {
+  pushSingleTranslation,
+  // Export other functions if they might be useful externally, e.g.:
+  findTranslationFiles,
+  findExistingTranslationId,
+  analyzeTranslationFile,
+  preprocessTranslationFiles,
+  verifyContentVisibility,
+  fixSeoImages,
+};
+
 // Run main
-uploadMain()
-  .then(() => console.log("\nUpload script finished."))
-  .catch((err) => {
-    console.error("\n--- UPLOAD SCRIPT FAILED ---");
-    console.error(err);
-    process.exit(1);
-  });
+if (require.main === module) {
+  uploadMain()
+    .then(() => console.log("\nUpload script finished."))
+    .catch((err) => {
+      console.error("\n--- UPLOAD SCRIPT FAILED ---");
+      console.error(err);
+      process.exit(1);
+    });
+}
