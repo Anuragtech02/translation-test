@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= itemSlug %> - Translation Viewer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+  <style>
+    .language-badge {
+      font-size: 0.8rem;
+      border-radius: 30px;
+      padding: 5px 15px;
+    }
+
+    .translation-card {
+      margin-bottom: 20px;
+    }
+
+    .json-preview {
+      max-height: 500px;
+      overflow-y: auto;
+      border-radius: 5px;
+    }
+
+    .nav-link {
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-right: 5px;
+    }
+
+    .nav-link.active {
+      background-color: #0d6efd;
+      color: white !important;
+    }
+
+    #previewTab {
+      background-color: #e0f7fa;
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 5px;
+    }
+
+    #fieldSelector {
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand" href="/">Translation Viewer</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <a class="nav-link" href="/">Home</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        <li class="breadcrumb-item"><a href="/content/<%= contentType %>"><%= contentType %></a></li>
+        <li class="breadcrumb-item active" aria-current="page"><%= itemSlug %></li>
+      </ol>
+    </nav>
+
+    <h1 class="mb-4"><%= itemSlug %></h1>
+    <p class="lead">Content Type: <span class="badge bg-primary"><%= contentType %></span></p>
+
+    <div id="languageBadges" class="mb-4"></div>
+
+    <ul class="nav nav-tabs" id="translationTabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#jsonTab">JSON View</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#diffTab">Compare View</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#previewTab">Preview</a>
+      </li>
+    </ul>
+
+    <div class="tab-content mt-3">
+      <div class="tab-pane fade show active" id="jsonTab">
+        <div id="translationsContainer" class="row">
+          <div class="col-12 text-center">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="diffTab">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="sourceLanguage" class="form-label">Source Language</label>
+            <select class="form-select" id="sourceLanguage"></select>
+          </div>
+          <div class="col-md-6">
+            <label for="targetLanguage" class="form-label">Target Language</label>
+            <select class="form-select" id="targetLanguage"></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-12">
+            <div class="form-group mb-3">
+              <label for="fieldSelector" class="form-label">Select Field</label>
+              <select class="form-select" id="fieldSelector">
+                <option value="">Loading fields...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <span id="sourceLanguageLabel">Source Language</span>
+              </div>
+              <div class="card-body">
+                <div id="sourceContent" class="p-3 bg-light">Select a field to compare</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <span id="targetLanguageLabel">Target Language</span>
+              </div>
+              <div class="card-body">
+                <div id="targetContent" class="p-3 bg-light">Select a field to compare</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="previewTab">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="previewLanguage" class="form-label">Select Language</label>
+            <select class="form-select" id="previewLanguage"></select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Content Preview</h5>
+          </div>
+          <div class="card-body">
+            <div id="contentPreview">
+              <p class="text-center">Select a language to preview content</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+  <script>
+    let translationsData = {};
+    let availableLanguages = [];
+    let availableFields = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const contentType = '<%= contentType %>';
+      const itemSlug = '<%= itemSlug %>';
+
+      // Fetch translations for this item
+      fetch(`/api/translations/${contentType}/${itemSlug}`)
+        .then(response => response.json())
+        .then(data => {
+          if (!data.translations || Object.keys(data.translations).length === 0) {
+            document.getElementById('translationsContainer').innerHTML =
+              '<div class="col-12"><p class="text-center">No translations found</p></div>';
+            return;
+          }
+
+          translationsData = data.translations;
+          availableLanguages = Object.keys(translationsData);
+
+          // Populate language badges
+          const languageBadgesContainer = document.getElementById('languageBadges');
+          languageBadgesContainer.innerHTML = '';
+          availableLanguages.forEach(lang => {
+            const badge = document.createElement('span');
+            badge.className = 'badge language-badge bg-secondary me-2';
+            badge.textContent = lang;
+            languageBadgesContainer.appendChild(badge);
+          });
+
+          // Populate language dropdowns
+          populateLanguageDropdowns();
+
+          // Extract fields for the field selector
+          const firstLang = availableLanguages[0];
+          if (firstLang && translationsData[firstLang] && translationsData[firstLang].translatedAttributes) {
+            extractFieldPaths(translationsData[firstLang].translatedAttributes);
+            populateFieldSelector();
+          }
+
+          // Render JSON view
+          renderTranslations();
+
+          // Set up event listeners
+          setupEventListeners();
+        })
+        .catch(error => {
+          console.error(`Error fetching translations for ${contentType}/${itemSlug}:`, error);
+          document.getElementById('translationsContainer').innerHTML =
+            '<div class="col-12"><p class="text-center text-danger">Error loading translations</p></div>';
+        });
+    });
+
+    function renderTranslations() {
+      const container = document.getElementById('translationsContainer');
+      container.innerHTML = '';
+
+      availableLanguages.forEach(lang => {
+        const col = document.createElement('div');
+        col.className = 'col-lg-6 translation-card';
+
+        const card = document.createElement('div');
+        card.className = 'card h-100';
+
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'card-header';
+        cardHeader.innerHTML = `<h5 class="card-title mb-0">
+          <span class="badge language-badge bg-primary me-2">${lang}</span> Translation
+        </h5>`;
+
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body';
+
+        const preElement = document.createElement('pre');
+        preElement.className = 'json-preview';
+
+        const codeElement = document.createElement('code');
+        codeElement.className = 'language-json';
+        codeElement.textContent = JSON.stringify(translationsData[lang], null, 2);
+
+        preElement.appendChild(codeElement);
+        cardBody.appendChild(preElement);
+        card.appendChild(cardHeader);
+        card.appendChild(cardBody);
+        col.appendChild(card);
+        container.appendChild(col);
+      });
+
+      // Highlight the code
+      Prism.highlightAll();
+    }
+
+    function populateLanguageDropdowns() {
+      const sourceLanguageSelect = document.getElementById('sourceLanguage');
+      const targetLanguageSelect = document.getElementById('targetLanguage');
+      const previewLanguageSelect = document.getElementById('previewLanguage');
+
+      sourceLanguageSelect.innerHTML = '';
+      targetLanguageSelect.innerHTML = '';
+      previewLanguageSelect.innerHTML = '';
+
+      availableLanguages.forEach((lang, index) => {
+        const sourceOption = document.createElement('option');
+        sourceOption.value = lang;
+        sourceOption.textContent = lang;
+        sourceLanguageSelect.appendChild(sourceOption);
+
+        const targetOption = document.createElement('option');
+        targetOption.value = lang;
+        targetOption.textContent = lang;
+        // Select the second language as the default target if available
+        if (index === 1) {
+          targetOption.selected = true;
+        }
+        targetLanguageSelect.appendChild(targetOption);
+
+        const previewOption = document.createElement('option');
+        previewOption.value = lang;
+        previewOption.textContent = lang;
+        previewLanguageSelect.appendChild(previewOption);
+      });
+
+      // Default to the first language for source and preview (if available)
+      if (availableLanguages.length > 0) {
+        sourceLanguageSelect.value = availableLanguages[0];
+        previewLanguageSelect.value = availableLanguages[0];
+      }
+
+      // Update labels
+      updateLanguageLabels();
+    }
+
+    function updateLanguageLabels() {
+      const sourceLanguage = document.getElementById('sourceLanguage').value;
+      const targetLanguage = document.getElementById('targetLanguage').value;
+
+      document.getElementById('sourceLanguageLabel').textContent = sourceLanguage;
+      document.getElementById('targetLanguageLabel').textContent = targetLanguage;
+    }
+
+    function extractFieldPaths(obj, prefix = '', result = []) {
+      if (!obj || typeof obj !== 'object') return result;
+
+      for (const key in obj) {
+        const value = obj[key];
+        const path = prefix ? `${prefix}.${key}` : key;
+
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+          // For nested objects, recursively extract paths
+          extractFieldPaths(value, path, result);
+        } else if (Array.isArray(value)) {
+          // For arrays, add the array itself as a field
+          result.push({
+            path: path,
+            type: 'array',
+            label: path
+          });
+
+          // For simple arrays of strings/numbers, don't process further
+          if (value.length > 0 && typeof value[0] !== 'object') {
+            continue;
+          }
+
+          // For arrays of objects, process each item (just the first one as an example)
+          if (value.length > 0 && typeof value[0] === 'object') {
+            for (let i = 0; i < Math.min(value.length, 3); i++) {
+              extractFieldPaths(value[i], `${path}[${i}]`, result);
+            }
+          }
+        } else if (typeof value === 'string') {
+          // For string values, add as a simple field
+          result.push({
+            path: path,
+            type: 'string',
+            label: path,
+            value: value
+          });
+        }
+      }
+
+      availableFields = result;
+      return result;
+    }
+
+    function populateFieldSelector() {
+      const fieldSelector = document.getElementById('fieldSelector');
+      fieldSelector.innerHTML = '';
+
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = '-- Select a field --';
+      fieldSelector.appendChild(defaultOption);
+
+      // Group fields by top-level category
+      const groupedFields = {};
+
+      availableFields.forEach(field => {
+        const topLevel = field.path.split('.')[0];
+
+        if (!groupedFields[topLevel]) {
+          groupedFields[topLevel] = [];
+        }
+
+        groupedFields[topLevel].push(field);
+      });
+
+      // Create option groups
+      Object.keys(groupedFields).sort().forEach(group => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = group;
+
+        groupedFields[group].sort((a, b) => a.path.localeCompare(b.path)).forEach(field => {
+          if (field.type === 'string') {
+            const option = document.createElement('option');
+            option.value = field.path;
+            option.textContent = field.path;
+            optgroup.appendChild(option);
+          }
+        });
+
+        fieldSelector.appendChild(optgroup);
+      });
+    }
+
+    function getFieldValue(obj, path) {
+      const parts = path.split('.');
+      let value = obj;
+
+      for (let i = 0; i < parts.length; i++) {
+        let part = parts[i];
+
+        // Handle array indexing
+        if (part.includes('[') && part.includes(']')) {
+          const arrayName = part.substring(0, part.indexOf('['));
+          const indexStr = part.substring(part.indexOf('[') + 1, part.indexOf(']'));
+          const index = parseInt(indexStr, 10);
+
+          value = value[arrayName];
+          if (!Array.isArray(value) || index >= value.length) {
+            return undefined;
+          }
+
+          value = value[index];
+        } else {
+          value = value[part];
+          if (value === undefined) {
+            return undefined;
+          }
+        }
+      }
+
+      return value;
+    }
+
+    function displayComparedContent() {
+      const fieldPath = document.getElementById('fieldSelector').value;
+      if (!fieldPath) return;
+
+      const sourceLanguage = document.getElementById('sourceLanguage').value;
+      const targetLanguage = document.getElementById('targetLanguage').value;
+
+      const sourceContent = document.getElementById('sourceContent');
+      const targetContent = document.getElementById('targetContent');
+
+      // Get the source and target data
+      const sourceData = translationsData[sourceLanguage]?.translatedAttributes;
+      const targetData = translationsData[targetLanguage]?.translatedAttributes;
+
+      if (!sourceData || !targetData) {
+        sourceContent.innerHTML = 'Source data not available';
+        targetContent.innerHTML = 'Target data not available';
+        return;
+      }
+
+      // Extract the field value from each language
+      const sourceValue = getFieldValue(sourceData, fieldPath);
+      const targetValue = getFieldValue(targetData, fieldPath);
+
+      // Display the values
+      if (typeof sourceValue === 'string') {
+        sourceContent.innerHTML = sourceValue || '<em class="text-muted">Empty</em>';
+      } else {
+        sourceContent.innerHTML = `<pre><code>${JSON.stringify(sourceValue, null, 2)}</code></pre>`;
+      }
+
+      if (typeof targetValue === 'string') {
+        targetContent.innerHTML = targetValue || '<em class="text-muted">Empty</em>';
+      } else {
+        targetContent.innerHTML = `<pre><code>${JSON.stringify(targetValue, null, 2)}</code></pre>`;
+      }
+    }
+
+    function displayPreview() {
+      const previewLanguage = document.getElementById('previewLanguage').value;
+      const contentPreview = document.getElementById('contentPreview');
+
+      // Get the data for the selected language
+      const data = translationsData[previewLanguage]?.translatedAttributes;
+
+      if (!data) {
+        contentPreview.innerHTML = '<p class="text-center">Preview data not available</p>';
+        return;
+      }
+
+      // Create a preview of the content
+      let html = '';
+
+      // Title and short description
+      if (data.title) {
+        html += `<h1>${data.title}</h1>`;
+      }
+
+      if (data.shortDescription) {
+        html += `<div class="lead mb-4">${data.shortDescription}</div>`;
+      }
+
+      // Description (if HTML)
+      if (data.description) {
+        html += `<div class="mb-4">${data.description}</div>`;
+      }
+
+      // Table of content or FAQ if available
+      if (data.tableOfContent && Array.isArray(data.tableOfContent)) {
+        html += `<div class="card mb-4">
+          <div class="card-header">
+            <h3>Table of Contents</h3>
+          </div>
+          <div class="card-body">
+            <ol>`;
+
+        data.tableOfContent.forEach(item => {
+          html += `<li>
+            <h4>${item.title || ''}</h4>
+            ${item.description || ''}
+          </li>`;
+        });
+
+        html += `</ol>
+          </div>
+        </div>`;
+      }
+
+      if (data.faqList && Array.isArray(data.faqList)) {
+        html += `<div class="card mb-4">
+          <div class="card-header">
+            <h3>${data.faqSectionHeading || 'FAQ'}</h3>
+          </div>
+          <div class="card-body">
+            <div class="accordion" id="faqAccordion">`;
+
+        data.faqList.forEach((item, index) => {
+          html += `<div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq${index}">
+                ${item.title || ''}
+              </button>
+            </h2>
+            <div id="faq${index}" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+              <div class="accordion-body">
+                ${item.description || ''}
+              </div>
+            </div>
+          </div>`;
+        });
+
+        html += `</div>
+          </div>
+        </div>`;
+      }
+
+      contentPreview.innerHTML = html || '<p class="text-center">No preview content available</p>';
+    }
+
+    function setupEventListeners() {
+      // Field selector change
+      const fieldSelector = document.getElementById('fieldSelector');
+      if (fieldSelector) {
+        fieldSelector.addEventListener('change', displayComparedContent);
+      }
+
+      // Source language change
+      const sourceLanguage = document.getElementById('sourceLanguage');
+      if (sourceLanguage) {
+        sourceLanguage.addEventListener('change', () => {
+          updateLanguageLabels();
+          displayComparedContent();
+        });
+      }
+
+      // Target language change
+      const targetLanguage = document.getElementById('targetLanguage');
+      if (targetLanguage) {
+        targetLanguage.addEventListener('change', () => {
+          updateLanguageLabels();
+          displayComparedContent();
+        });
+      }
+
+      // Preview language change
+      const previewLanguage = document.getElementById('previewLanguage');
+      if (previewLanguage) {
+        previewLanguage.addEventListener('change', displayPreview);
+      }
+
+      // Tab change events
+      const tabs = document.querySelectorAll('a[data-bs-toggle="tab"]');
+      tabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', (event) => {
+          const target = event.target.getAttribute('href');
+
+          if (target === '#diffTab') {
+            displayComparedContent();
+          } else if (target === '#previewTab') {
+            displayPreview();
+          }
+        });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  translation-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strapi-translation-service
+    volumes:
+      - ./translations:/app/translations
+      - ./translation-cache:/app/translation-cache
+      - ./.env:/app/.env
+    restart: unless-stopped
+    command: node fetch-translate.js
+    environment:
+      - NODE_ENV=production
+    networks:
+      - translation-network
+
+  upload-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: strapi-upload-service
+    volumes:
+      - ./translations:/app/translations
+      - ./.env:/app/.env
+    restart: unless-stopped
+    command: node uploadTranslations.js es fr de zh-CN zh-TW ja ru ar pl it vi ko
+    depends_on:
+      - translation-service
+    networks:
+      - translation-network
+
+  translation-viewer:
+    build:
+      context: .
+      dockerfile: translation-viewer/Dockerfile
+    container_name: translation-viewer
+    volumes:
+      - ./translations:/app/translations
+    environment:
+      - PORT=3000
+      - TRANSLATIONS_DIR=/app/translations
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - translation-network
+
+networks:
+  translation-network:
+    driver: bridge
