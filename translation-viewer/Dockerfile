@@ -16,9 +16,16 @@ RUN mkdir -p ./translations
 RUN mkdir -p ./translation-cache
 
 # Copy application files
-COPY translation-viewer/ ./translation-viewer/
+COPY translation-viewer/app.js ./translation-viewer/
+COPY translation-viewer/views/ ./translation-viewer/views/
+COPY translation-viewer/routes/ ./translation-viewer/routes/
+COPY translation-viewer/public/ ./translation-viewer/public/
+COPY translation-viewer/package.json ./translation-viewer/
 COPY uploadStatusTracker.js ./
 COPY uploadService.js ./
+
+# Create empty upload-status.json file
+RUN echo '{"lastUpdated":"2023-01-01T00:00:00.000Z","currentlyUploading":null,"files":{}}' > upload-status.json
 
 # Set environment variables
 ENV PORT=3000
