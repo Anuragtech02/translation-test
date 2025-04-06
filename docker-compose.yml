@@ -9,11 +9,18 @@ services:
     volumes:
       - ./translations:/app/translations
       - ./translation-cache:/app/translation-cache
-      - ./.env:/app/.env
     restart: unless-stopped
     command: node fetch-translate.js
     environment:
-      - NODE_ENV=production
+      - SOURCE_URL=${SOURCE_URL}
+      - SOURCE_TOKEN=${SOURCE_TOKEN}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OUTPUT_DIR=/app/translations
+      - CACHE_DIR=/app/translation-cache
+      - SOURCE_LOCALE=${SOURCE_LOCALE:-en}
+      - TARGET_LANGS=${TARGET_LANGS:-es,fr,de,zh-CN,zh-TW,ja,ru,ar,pl,it,vi,ko}
+      - MAX_REPORTS=${MAX_REPORTS:-50}
+      - RUN_INTERVAL_MS=${RUN_INTERVAL_MS:-3600000}
     networks:
       - translation-network
 
@@ -24,9 +31,15 @@ services:
     container_name: strapi-upload-service
     volumes:
       - ./translations:/app/translations
-      - ./.env:/app/.env
     restart: unless-stopped
     command: node uploadTranslations.js es fr de zh-CN zh-TW ja ru ar pl it vi ko
+    environment:
+      - TARGET_URL=${TARGET_URL}
+      - TARGET_TOKEN=${TARGET_TOKEN}
+      - OUTPUT_DIR=/app/translations
+      - UPLOAD_DELAY_MS=${UPLOAD_DELAY_MS:-500}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+      - RETRY_DELAY_MS=${RETRY_DELAY_MS:-2000}
     depends_on:
       - translation-service
     networks:
