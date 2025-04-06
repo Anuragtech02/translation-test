@@ -25,7 +25,7 @@ COPY uploadStatusTracker.js ./
 COPY uploadService.js ./
 
 # Create empty upload-status.json file
-RUN echo '{"lastUpdated":"2023-01-01T00:00:00.000Z","currentlyUploading":null,"files":{}}' > upload-status.json
+# RUN echo '{"lastUpdated":"2023-01-01T00:00:00.000Z","currentlyUploading":null,"files":{}}' > upload-status.json
 
 # Set environment variables
 ENV PORT=3000
