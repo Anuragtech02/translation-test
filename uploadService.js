@@ -21,7 +21,7 @@ const UPLOAD_CHECK_INTERVAL_MS = parseInt(
   10,
 ); // Default: check every 60 seconds
 
-const statusTracker = new UploadStatusTracker();
+const statusTracker = new UploadStatusTracker("/app/upload-status.json");
 
 /**
  * Finds translation files that are pending upload.

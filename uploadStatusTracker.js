@@ -10,8 +10,7 @@ const path = require("path");
 
 class UploadStatusTracker {
   constructor(statusFilePath) {
-    this.statusFilePath =
-      statusFilePath || path.join(__dirname, "../upload-status.json");
+    this.statusFilePath = statusFilePath || "/app/upload-status.json";
     this.uploadStatus = this.loadStatus();
   }
 
@@ -42,13 +41,20 @@ class UploadStatusTracker {
   saveStatus() {
     try {
       this.uploadStatus.lastUpdated = new Date().toISOString();
-      fs.writeFileSync(
-        this.statusFilePath,
-        JSON.stringify(this.uploadStatus, null, 2),
-        "utf8",
-      );
+      const dataToSave = JSON.stringify(this.uploadStatus, null, 2);
+      console.log(
+        `[Tracker] Attempting to save status to ${this.statusFilePath}. Data length: ${dataToSave.length}`,
+      ); // Log before write
+      fs.writeFileSync(this.statusFilePath, dataToSave, "utf8");
+      console.log(
+        `[Tracker] Successfully saved status to ${this.statusFilePath}`,
+      ); // Log after write
     } catch (error) {
-      console.error("Error saving upload status:", error);
+      // Log the full error object
+      console.error(
+        `[Tracker] Error saving upload status to ${this.statusFilePath}:`,
+        error,
+      );
     }
   }
 
@@ -58,13 +64,20 @@ class UploadStatusTracker {
    */
   startUpload(filePath) {
     const relativePath = this.getRelativePath(filePath);
+    console.log(`[Tracker] Starting upload for: ${relativePath}`); // Added log
     this.uploadStatus.currentlyUploading = relativePath;
-    this.uploadStatus.files[relativePath] = {
-      status: "uploading",
-      startedAt: new Date().toISOString(),
-      completedAt: null,
-      error: null,
-    };
+    // Ensure the file entry exists before modifying
+    if (!this.uploadStatus.files[relativePath]) {
+      this.uploadStatus.files[relativePath] = {}; // Initialize if needed
+    }
+    this.uploadStatus.files[relativePath].status = "uploading";
+    this.uploadStatus.files[relativePath].startedAt = new Date().toISOString();
+    this.uploadStatus.files[relativePath].completedAt = null;
+    this.uploadStatus.files[relativePath].error = null;
+    console.log(
+      "[Tracker] Status before saving (startUpload):",
+      JSON.stringify(this.uploadStatus.files[relativePath]),
+    ); // Log state
     this.saveStatus();
   }
 
@@ -76,14 +89,20 @@ class UploadStatusTracker {
    */
   completeUpload(filePath, success = true, error = null) {
     const relativePath = this.getRelativePath(filePath);
+    console.log(
+      `[Tracker] Completing upload for: ${relativePath}, Success: ${success}, Error: ${error}`,
+    ); // Added log
 
     if (this.uploadStatus.currentlyUploading === relativePath) {
       this.uploadStatus.currentlyUploading = null;
     }
 
     if (!this.uploadStatus.files[relativePath]) {
+      console.warn(
+        `[Tracker] completeUpload called for untracked file: ${relativePath}. Initializing.`,
+      );
       this.uploadStatus.files[relativePath] = {
-        startedAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(), // Or maybe null if start wasn't called?
       };
     }
 
@@ -92,11 +111,12 @@ class UploadStatusTracker {
       : "failed";
     this.uploadStatus.files[relativePath].completedAt =
       new Date().toISOString();
+    this.uploadStatus.files[relativePath].error = error ? String(error) : null; // Ensure error is string
 
-    if (error) {
-      this.uploadStatus.files[relativePath].error = error;
-    }
-
+    console.log(
+      "[Tracker] Status before saving (completeUpload):",
+      JSON.stringify(this.uploadStatus.files[relativePath]),
+    ); // Log state
     this.saveStatus();
   }
 
