@@ -290,71 +290,217 @@ function saveToFile(
 }
 
 /**
- * Process a single content item: fetch, translate (using cache), save JSONs.
- * Accepts the global cache object.
+ * Processes a single content item: fetches, checks status, translates if needed, saves JSON.
+ * Designed for resumeability by checking upload status.
+ *
+ * @param {object} item - Object containing { slug: string, id: number } of the source item.
+ * @param {string} contentType - The plural API ID (e.g., 'reports').
+ * @param {string[]} targetLangs - Array of target language codes.
+ * @param {object} globalCache - The global translation cache object.
  */
 async function processItem(item, contentType, targetLangs, globalCache) {
   let originalContent = null;
-  const { slug } = item;
-  const timerLabel = `Processing ${contentType} '${slug}'`;
+  const { slug, id: sourceItemId } = item; // Destructure source ID from item
+  const timerLabel = `Processing ${contentType} '${slug}' (Source ID: ${sourceItemId})`;
   console.time(timerLabel);
+
   try {
-    console.log(`\n=== Processing ${contentType}: ${slug} ===`);
-    originalContent = await fetchContent(slug, contentType);
-    const originalItemId = originalContent.id;
-    const translationPromises = targetLangs.map(async (lang) => {
-      // 'lang' is the targetLocale
+    console.log(`\n=== ${timerLabel} ===`);
+
+    // --- Step 1: Fetch Original Content ---
+    // Crucial to proceed, fail fast if the source doesn't exist.
+    try {
+      originalContent = await fetchContent(slug, contentType);
+      if (!originalContent || !originalContent.id) {
+        // Fetch might return empty array, or item might lack an ID
+        console.warn(
+          `   Skipping: Could not fetch valid original content or ID for slug ${slug}.`,
+        );
+        console.timeEnd(timerLabel);
+        return; // Stop processing this item
+      }
+      // Optional: Verify fetched ID matches input sourceItemId if needed
+      if (originalContent.id !== sourceItemId) {
+        console.warn(
+          `   Source ID mismatch for slug ${slug}. Input: ${sourceItemId}, Fetched: ${originalContent.id}. Proceeding with fetched ID.`,
+        );
+      }
+    } catch (fetchError) {
+      console.error(
+        ` ❌ FAILED to fetch original content for ${slug}. Skipping item. Error: ${fetchError.message}`,
+      );
+      console.timeEnd(timerLabel);
+      return; // Stop processing this item if fetch fails
+    }
+
+    const originalItemId = originalContent.id; // Use the definitive ID from the fetched content
+
+    // --- Step 2: Process Each Target Language ---
+    const languageProcessingPromises = targetLangs.map(async (lang) => {
+      const logPrefix = ` -> [${slug} -> ${lang}]`;
+
+      // --- Determine Expected Output Path & Status Key ---
+      const expectedOutputFileDir = path.join(OUTPUT_DIR, contentType, slug);
+      const expectedOutputFilename = `${slug}_${lang}.json`;
+      const expectedOutputFilePath = path.join(
+        expectedOutputFileDir,
+        expectedOutputFilename,
+      );
+      const relativePathForStatus = statusTracker.getRelativePath(
+        expectedOutputFilePath,
+      );
+
+      // --- Resumeability Check: Upload Status ---
       try {
-        console.log(` -> Translating ${slug} to ${lang}...`);
-        globalCache[lang] = globalCache[lang] || {};
+        const fileStatus = statusTracker.getFileStatus(relativePathForStatus);
+
+        if (fileStatus.status === "completed") {
+          console.log(
+            `${logPrefix} Skipping: Upload previously marked as 'completed'.`,
+          );
+          return { lang, status: "skipped_completed" };
+        } else if (fileStatus.status === "uploading") {
+          // Avoid translating if an upload might be in progress (though unlikely if service restarts)
+          console.log(
+            `${logPrefix} Skipping: Upload potentially in progress (status: 'uploading'). Will retry later.`,
+          );
+          return { lang, status: "skipped_uploading" };
+        }
+        // If status is 'pending' or 'failed', or file is untracked, we proceed.
+      } catch (statusError) {
+        console.warn(
+          `${logPrefix} Error checking upload status for ${relativePathForStatus}: ${statusError.message}. Proceeding with translation.`,
+        );
+      }
+
+      // --- Proceed with Translation and Saving ---
+      try {
+        console.log(`${logPrefix} Translating...`);
+        globalCache[lang] = globalCache[lang] || {}; // Ensure language cache exists
         const translator = new TranslationService(
           GOOGLE_API_KEY,
           lang,
-          globalCache[lang],
+          globalCache[lang], // Pass language-specific cache
         );
 
+        // Translate using the fetched original content
         const translationResult = await translator.translateContent(
-          originalContent,
+          originalContent, // Pass { id, attributes } object
           lang,
         );
 
+        // Validate the result before saving
         const translatedAttributes =
           translationResult.attributes || translationResult;
+        if (
+          !translatedAttributes ||
+          typeof translatedAttributes !== "object" ||
+          Object.keys(translatedAttributes).length === 0
+        ) {
+          throw new Error("Translation result was empty or invalid.");
+        }
+
+        // Save the validated translated attributes
         const savedFilePath = saveToFile(
           translatedAttributes,
           lang,
-          originalItemId,
+          originalItemId, // Use fetched original ID
           slug,
           contentType,
         );
         console.log(
-          ` ✓ Saved: ${slug} (${lang}) to ${path.basename(savedFilePath)}`,
+          `${logPrefix} ✓ Saved translation JSON to ${path.basename(savedFilePath)}`,
         );
-        return { lang, status: "success" };
+
+        // --- Update Upload Status to Pending ---
+        // Ensures the upload service knows this file is ready.
+        try {
+          const relativeSavedPath =
+            statusTracker.getRelativePath(savedFilePath); // Should be same as relativePathForStatus
+          const currentStatusInfo =
+            statusTracker.getFileStatus(relativeSavedPath);
+          // Update to 'pending' unless it's already definitively 'failed' or 'completed' (edge case)
+          if (
+            currentStatusInfo.status !== "failed" &&
+            currentStatusInfo.status !== "completed"
+          ) {
+            statusTracker.uploadStatus.files[relativeSavedPath] = {
+              ...currentStatusInfo, // Keep existing timestamps if relevant
+              status: "pending",
+              error: null, // Clear previous error if any
+            };
+            statusTracker.saveStatus();
+            console.log(`${logPrefix} Updated upload status to 'pending'.`);
+          } else {
+            console.log(
+              `${logPrefix} Keeping existing status '${currentStatusInfo.status}'.`,
+            );
+          }
+        } catch (statusUpdateError) {
+          console.warn(
+            `${logPrefix} Failed to update status to pending after saving: ${statusUpdateError.message}`,
+          );
+        }
+
+        return { lang, status: "success_translated" };
       } catch (langError) {
+        // Catch errors specifically from translation or saving for this language
         console.error(
-          ` ❌ FAILED translation/saving for ${slug} to ${lang}: ${langError.message}`,
+          `${logPrefix} ❌ FAILED translation or saving: ${langError.message}`,
         );
+        console.error(langError.stack); // Log stack trace for better debugging
+        // Return error status for Promise.allSettled
         return { lang, status: "error", error: langError.message };
       }
+    }); // End targetLangs.map
+
+    // --- Step 3: Wait for all languages and Summarize ---
+    const results = await Promise.allSettled(languageProcessingPromises);
+
+    console.timeEnd(timerLabel); // End timer after all promises settle
+
+    // Log summary for the item
+    let skippedCompletedCount = 0;
+    let skippedUploadingCount = 0;
+    let successCount = 0;
+    let errorCount = 0;
+
+    results.forEach((result) => {
+      if (result.status === "fulfilled") {
+        switch (result.value.status) {
+          case "skipped_completed":
+            skippedCompletedCount++;
+            break;
+          case "skipped_uploading":
+            skippedUploadingCount++;
+            break;
+          case "success_translated":
+            successCount++;
+            break;
+          case "error":
+            errorCount++;
+            break; // Error handled within the map's catch
+        }
+      } else {
+        // Should ideally not happen if errors are caught inside the map
+        console.error(
+          `   -> Unexpected Promise rejection for a language of ${slug}: ${result.reason}`,
+        );
+        errorCount++;
+      }
     });
-    const results = await Promise.all(translationPromises);
-    const errors = results.filter((r) => r.status === "error");
-    console.timeEnd(timerLabel);
+
     console.log(
-      `--- Finished processing languages for ${slug}. Success: ${results.length - errors.length}, Failed: ${errors.length} ---`,
+      `--- Summary for ${slug}: Translated: ${successCount}, Skipped (Completed): ${skippedCompletedCount}, Skipped (Uploading): ${skippedUploadingCount}, Failed: ${errorCount} ---`,
     );
-    if (errors.length > 0) {
-      console.warn(
-        `   Failed languages for ${slug}: ${errors.map((e) => e.lang).join(", ")}`,
-      );
-    }
   } catch (error) {
-    console.timeEnd(timerLabel);
-    const itemId = originalContent ? originalContent.id : "UNKNOWN";
+    // Catch errors from initial setup/fetch before the language loop
+    console.timeEnd(timerLabel); // Ensure timer ends even on outer error
+    const itemIdForLog = originalContent ? originalContent.id : sourceItemId; // Use sourceItemId if fetch failed
     console.error(
-      `❌ FAILED processing item ${contentType} / ${slug} (ID: ${itemId}): ${error.message}`,
+      `❌ Top-level FAILED processing item ${contentType} / ${slug} (Source ID: ${itemIdForLog}): ${error.message}`,
     );
+    console.error(error.stack);
   }
 }
 

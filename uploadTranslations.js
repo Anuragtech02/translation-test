@@ -91,6 +91,7 @@ const targetApi = axios.create({
     Authorization: `Bearer ${TARGET_TOKEN}`,
     "Content-Type": "application/json",
   },
+  timeout: 120000,
 });
 
 // Debug function to help analyze the content
