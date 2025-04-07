@@ -35,6 +35,9 @@ async function query(text, params) {
   }
 }
 
+const MIGRATION_STATUS_TABLE = "pipeline_migrations";
+const MIGRATION_NAME_JSON_STATUS = "json_status_to_db_v1"; // Name for this specific migration
+
 // Function to create the table if it doesn't exist
 async function initializeDatabase() {
   console.log('[DB] Initializing database table "translation_jobs"...');
