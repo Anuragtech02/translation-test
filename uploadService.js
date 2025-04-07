@@ -27,6 +27,8 @@ const MAX_CONCURRENT_UPLOADS = parseInt(
   10,
 ); // Concurrency limit
 
+const JSON_STATUS_FILE_PATH = "/app/upload-status.json"; // Define path for migration
+
 const statusTracker = new UploadStatusTracker("/app/upload-status.json");
 
 /**
