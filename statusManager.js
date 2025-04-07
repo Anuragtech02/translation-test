@@ -125,7 +125,7 @@ async function getPendingTranslationJobs(limit = 50) {
   const selectQuery = `
      SELECT
        slug,
-       content_type, -- <<< FIX: Ensure this column is selected
+       content_type,
        language,
        source_item_id
      FROM translation_jobs
