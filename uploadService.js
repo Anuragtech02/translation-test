@@ -12,6 +12,7 @@ const { glob } = require("glob"); // Use glob v10+ directly
 const UploadStatusTracker = require("./uploadStatusTracker");
 const statusManager = require("./statusManager"); // Require Status Manager module
 const originalUploader = require("./uploadTranslations"); // Import the original upload logic module
+const db = require("./db");
 
 // --- Configuration ---
 const TRANSLATIONS_DIR = process.env.OUTPUT_DIR || "/app/translations"; // Use absolute path inside container

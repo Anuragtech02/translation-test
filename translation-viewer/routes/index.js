@@ -1,7 +1,7 @@
 // translation-viewer/routes/index.js
 const express = require("express");
 const router = express.Router();
-const statusManager = require("../statusManager"); // Adjust path if needed
+const statusManager = require("../../statusManager"); // <-- FIX: Change path
 
 const JOBS_PER_PAGE = 50;
 
