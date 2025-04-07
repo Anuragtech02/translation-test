@@ -457,6 +457,30 @@ async function main() {
           running++;
           const currentJob = pendingJobs[jobIndex++];
 
+          // --- DETAILED DEBUG LOGGING for the condition ---
+          console.log(
+            `[DEBUG Job Check ${jobIndex}] Raw Job Data:`,
+            JSON.stringify(currentJob),
+          ); // Log raw data stringified
+          if (currentJob) {
+            // Check if currentJob exists before accessing properties
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] Slug Check: Value='${currentJob.slug}', Type=${typeof currentJob.slug}, Falsy=${!currentJob.slug}`,
+            );
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] ContentType Check: Value='${currentJob.contentType}', Type=${typeof currentJob.contentType}, Falsy=${!currentJob.contentType}`,
+            );
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] Language Check: Value='${currentJob.language}', Type=${typeof currentJob.language}, Falsy=${!currentJob.language}`,
+            );
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] SourceID Check: Value='${currentJob.source_item_id}', Type=${typeof currentJob.source_item_id}, Falsy=${!currentJob.source_item_id}`,
+            );
+          } else {
+            console.log(`[DEBUG Job Check ${jobIndex}] !currentJob is TRUE`);
+          }
+          // --- END DEBUG LOGGING ---
+
           // --- Critical Check: Ensure job object is valid ---
           if (
             !currentJob ||
@@ -466,13 +490,12 @@ async function main() {
             !currentJob.source_item_id
           ) {
             console.error(
-              `[Main] Invalid job data encountered at index ${jobIndex - 1}. Skipping. Data:`,
-              currentJob,
-            );
-            running--; // Decrement running count as this job won't run
-            jobsFailedCritically++; // Count this as a critical failure
-            runNextTranslationJob(); // Try to run the next one immediately
-            continue; // Skip to next iteration of while loop
+              `[Main] Invalid job data encountered at index ${jobIndex - 1}. Skipping. Condition Failed.`,
+            ); // Modified message
+            running--;
+            jobsFailedCritically++;
+            runNextTranslationJob();
+            continue;
           }
           // --- End Check ---
 
