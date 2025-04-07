@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Add your preferred styling here - reusing previous example styles */
+        body { font-family: sans-serif; line-height: 1.5; padding: 1em; color: #333; }
+        .header { background-color: #007bff; color: white; padding: 1em; margin: -1em -1em 1em -1em; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 1.5em; }
+        .header nav a { color: white; text-decoration: none; margin-left: 1em; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1em; margin-bottom: 1.5em; }
+        .stat-box { border: 1px solid #ddd; border-left: 5px solid #007bff; padding: 1em; text-align: center; background-color: #f9f9f9; }
+        .stat-box h3 { margin-top: 0; font-size: 1em; color: #555; }
+        .stat-box .count { font-size: 2em; font-weight: bold; color: #007bff; }
+        .stat-box.failed { border-left-color: #dc3545; }
+        .stat-box.failed .count { color: #dc3545; }
+        .stat-box.completed { border-left-color: #28a745; }
+        .stat-box.completed .count { color: #28a745; }
+        .stat-box.active { border-left-color: #ffc107; } /* For translating/uploading */
+        .stat-box.active .count { color: #ffc107; }
+        .stat-box.pending { border-left-color: #6c757d; } /* For pending states */
+        .stat-box.pending .count { color: #6c757d; }
+        .history-section { margin-top: 2em; }
+        .history-section h2 { border-bottom: 1px solid #eee; padding-bottom: 0.5em; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1em; table-layout: fixed; } /* Added table-layout */
+        th, td { border: 1px solid #ddd; padding: 0.6em; text-align: left; font-size: 0.9em; word-wrap: break-word; } /* Added word-wrap */
+        th { background-color: #f2f2f2; font-weight: bold;}
+        tbody tr:nth-child(odd) { background-color: #f9f9f9; }
+        .status-badge { padding: 0.2em 0.5em; border-radius: 0.25em; font-size: 0.8em; color: white; white-space: nowrap; }
+        .status-pending_translation, .status-pending_upload { background-color: #6c757d; }
+        .status-translating, .status-uploading { background-color: #ffc107; color: #333;}
+        .status-completed { background-color: #28a745; }
+        .status-failed_translation, .status-failed_upload { background-color: #dc3545; }
+        .error-message { color: #dc3545; font-size: 0.85em; margin-top: 0.3em; max-width: 400px; white-space: pre-wrap; }
+        .pagination { margin-top: 1em; }
+        .pagination a, .pagination span { margin-right: 0.5em; text-decoration: none; padding: 0.3em 0.6em; border: 1px solid #ddd; }
+        .pagination span.current { font-weight: bold; background-color: #eee; }
+        .pagination span.disabled { color: #aaa; }
+        .pagination a { color: #007bff; }
+        .filter-form { margin-bottom: 1em; display: flex; align-items: center; gap: 0.5em;}
+        .refresh-section { font-size: 0.9em; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1><%= title %></h1>
+         <div class="refresh-section">
+             <!-- Auto-refresh can be added back with client-side JS if needed -->
+             Last updated: <%= lastUpdated.toLocaleString() %>
+             <button onclick="window.location.reload();" class="btn btn-sm btn-outline-light ms-2">Refresh Now</button>
+         </div>
+    </header>
+
+     <div class="container mt-4">
+        <h2>Overall Status</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>Total Jobs</h3>
+                <div class="count"><%= counts.total %></div>
+            </div>
+            <div class="stat-box pending">
+                <h3>Pending Translation</h3>
+                <div class="count"><%= counts.pending_translation %></div>
+            </div>
+             <div class="stat-box active">
+                <h3>Translating</h3>
+                <div class="count"><%= counts.translating %></div>
+            </div>
+             <div class="stat-box pending">
+                <h3>Pending Upload</h3>
+                <div class="count"><%= counts.pending_upload %></div>
+            </div>
+             <div class="stat-box active">
+                <h3>Uploading</h3>
+                <div class="count"><%= counts.uploading %></div>
+            </div>
+            <div class="stat-box completed">
+                <h3>Completed</h3>
+                <div class="count"><%= counts.completed %></div>
+            </div>
+            <div class="stat-box failed">
+                <h3>Failed (Any)</h3>
+                <div class="count"><%= counts.failed_any %></div>
+                 <!-- Optionally show specific failed counts -->
+                 <!-- <small>(Translate: <%= counts.failed_translation %>, Upload: <%= counts.failed_upload %>)</small> -->
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h2>Job History</h2>
+
+            <form action="/" method="get" class="filter-form">
+                 <label for="status">Filter by Status:</label>
+                 <select name="status" id="status" onchange="this.form.submit()" class="form-select form-select-sm" style="width: auto;">
+                     <% possibleStatuses.forEach(status => { %>
+                         <option value="<%= status %>" <%= currentFilter === status ? 'selected' : '' %>>
+                             <%= status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) %>
+                         </option>
+                     <% }) %>
+                 </select>
+                 <noscript><button type="submit" class="btn btn-sm btn-secondary">Filter</button></noscript>
+            </form>
+
+            <div class="table-responsive">
+              <table>
+                  <thead>
+                      <tr>
+                          <th style="width: 15%;">Content Type</th>
+                          <th style="width: 25%;">Slug</th>
+                          <th style="width: 8%;">Language</th>
+                          <th style="width: 12%;">Status</th>
+                          <th style="width: 15%;">Last Updated</th>
+                          <th style="width: 25%;">Error</th>
+                          <!-- <th style="width: 8%;">Source ID</th> -->
+                          <th style="width: 8%;">Target ID</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      <% if (jobs.length > 0) { %>
+                          <% jobs.forEach(job => { %>
+                              <tr>
+                                  <td><%= job.content_type %></td>
+                                  <td><%= job.slug %></td>
+                                  <td><%= job.language %></td>
+                                  <td><span class="status-badge status-<%= job.status %>"><%= job.status %></span></td>
+                                  <td><%= new Date(job.updated_at).toLocaleString() %></td>
+                                  <td>
+                                      <% if (job.last_error) { %>
+                                          <div class="error-message"><%= job.last_error %></div>
+                                      <% } else { %>
+                                          -
+                                      <% } %>
+                                  </td>
+                                  <!-- <td><%= job.source_item_id || '-' %></td> -->
+                                  <td><%= job.target_item_id || '-' %></td>
+                              </tr>
+                          <% }) %>
+                      <% } else { %>
+                          <tr>
+                              <td colspan="7" class="text-center">No jobs found matching the filter "<%= currentFilter %>".</td>
+                          </tr>
+                      <% } %>
+                  </tbody>
+              </table>
+            </div>
+
+            <nav aria-label="Job pagination" class="pagination mt-3">
+                <ul class="pagination">
+                     <li class="page-item <%= currentPage <= 1 ? 'disabled' : '' %>">
+                        <a class="page-link" href="/?page=<%= currentPage - 1 %>&status=<%= currentFilter %>">Previous</a>
+                    </li>
+
+                     <%
+                     // Simple Pagination Logic (can be enhanced)
+                     const maxPagesToShow = 7;
+                     let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+                     let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+                     if (endPage - startPage + 1 < maxPagesToShow) {
+                         startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                     }
+                     %>
+
+                    <% if (startPage > 1) { %>
+                        <li class="page-item"><a class="page-link" href="/?page=1&status=<%= currentFilter %>">1</a></li>
+                        <% if (startPage > 2) { %><li class="page-item disabled"><span class="page-link">...</span></li><% } %>
+                    <% } %>
+
+                     <% for (let i = startPage; i <= endPage; i++) { %>
+                        <li class="page-item <%= i === currentPage ? 'active' : '' %>">
+                            <a class="page-link" href="/?page=<%= i %>&status=<%= currentFilter %>"><%= i %></a>
+                        </li>
+                    <% } %>
+
+                     <% if (endPage < totalPages) { %>
+                        <% if (endPage < totalPages - 1) { %><li class="page-item disabled"><span class="page-link">...</span></li><% } %>
+                        <li class="page-item"><a class="page-link" href="/?page=<%= totalPages %>&status=<%= currentFilter %>"><%= totalPages %></a></li>
+                     <% } %>
+
+                     <li class="page-item <%= currentPage >= totalPages ? 'disabled' : '' %>">
+                        <a class="page-link" href="/?page=<%= currentPage + 1 %>&status=<%= currentFilter %>">Next</a>
+                    </li>
+                </ul>
+            </nav>
+
+        </div> <!-- /history-section -->
+    </div> <!-- /container -->
+
+    <!-- Add Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Add any custom client-side JS if needed -->
+</body>
+</html>

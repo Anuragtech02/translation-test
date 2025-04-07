@@ -22,6 +22,13 @@ services:
       - TARGET_LANGS=${TARGET_LANGS:-es,fr,de,zh-CN,zh-TW,ja,ru,ar,pl,it,vi,ko}
       - MAX_REPORTS=${MAX_REPORTS:-50}
       - RUN_INTERVAL_MS=${RUN_INTERVAL_MS:-3600000}
+      - MAX_CONCURRENT_TRANSLATIONS=${MAX_CONCURRENT_TRANSLATIONS:-3}
+      # --- External Database Connection ---
+      - DATABASE_HOST=${EXTERNAL_DATABASE_HOST} # <= Hostname/IP of your external DB
+      - DATABASE_PORT=${EXTERNAL_DATABASE_PORT:-5432} # <= Port of your external DB
+      - DATABASE_NAME=${EXTERNAL_DATABASE_NAME} # <= DB name on external server
+      - DATABASE_USER=${EXTERNAL_DATABASE_USER} # <= Username for external DB
+      - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD} # <= Password for external DB
     networks:
       - translation-network
 
@@ -45,6 +52,12 @@ services:
       - RETRY_DELAY_MS=${RETRY_DELAY_MS:-2000}
       # Add the new variable (e.g., check every 2 minutes)
       - UPLOAD_CHECK_INTERVAL_MS=${UPLOAD_CHECK_INTERVAL_MS:-120000}
+      # --- External Database Connection ---
+      - DATABASE_HOST=${EXTERNAL_DATABASE_HOST} # <= Hostname/IP of your external DB
+      - DATABASE_PORT=${EXTERNAL_DATABASE_PORT:-5432} # <= Port of your external DB
+      - DATABASE_NAME=${EXTERNAL_DATABASE_NAME} # <= DB name on external server
+      - DATABASE_USER=${EXTERNAL_DATABASE_USER} # <= Username for external DB
+      - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD} # <= Password for external DB
     depends_on:
       - translation-service
     networks:
@@ -61,6 +74,12 @@ services:
     environment:
       - PORT=3000
       - TRANSLATIONS_DIR=/app/translations
+      # --- External Database Connection ---
+      - DATABASE_HOST=${EXTERNAL_DATABASE_HOST} # <= Hostname/IP of your external DB
+      - DATABASE_PORT=${EXTERNAL_DATABASE_PORT:-5432} # <= Port of your external DB
+      - DATABASE_NAME=${EXTERNAL_DATABASE_NAME} # <= DB name on external server
+      - DATABASE_USER=${EXTERNAL_DATABASE_USER} # <= Username for external DB
+      - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD} # <= Password for external DB
     ports:
       - "3000:3000"
     restart: unless-stopped

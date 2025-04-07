@@ -16,6 +16,9 @@ const dotenv = require("dotenv");
 const { TranslationService } = require("./trans_pipeline"); // Assumes trans_pipeline requires the optimized translationPipeline.js
 const UploadStatusTracker = require("./uploadStatusTracker");
 
+const db = require("./db");
+const statusManager = require("./statusManager");
+
 // Load environment variables (from .env file preferably)
 dotenv.config();
 
@@ -26,7 +29,11 @@ const SOURCE_TOKEN = process.env.SOURCE_TOKEN; // Required: API token for source
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; // Required: Your Google API Key
 const OUTPUT_DIR = process.env.OUTPUT_DIR || "./translations"; // Output directory for JSON files
 const SOURCE_LOCALE = process.env.SOURCE_LOCALE || "en"; // Define the source locale
-const MAX_REPORTS = process.env.MAX_REPORTS || 50; // Maximum number of reports to fetch and translate
+const MAX_REPORTS = parseInt(process.env.MAX_REPORTS || "50");
+const MAX_CONCURRENT_TRANSLATIONS = parseInt(
+  process.env.MAX_CONCURRENT_TRANSLATIONS || "3",
+  10,
+);
 
 const statusTracker = new UploadStatusTracker("/app/upload-status.json");
 // Define the target languages (if not provided in env, use these defaults)
@@ -292,273 +299,323 @@ function saveToFile(
 }
 
 /**
- * Processes a single content item: fetches, checks status, translates if needed, saves JSON.
- * Designed for resumeability by checking upload status.
+ * Processes a single translation job based on DB status.
+ * Fetches original content, translates, saves file, and updates DB status.
  *
- * @param {object} item - Object containing { slug: string, id: number } of the source item.
- * @param {string} contentType - The plural API ID (e.g., 'reports').
- * @param {string[]} targetLangs - Array of target language codes.
- * @param {object} globalCache - The global translation cache object.
+ * @param {object} job - Job object from DB { slug, contentType, language, source_item_id }
+ * @param {object} globalCache - The global translation memory cache object.
  */
-async function processItem(item, contentType, targetLangs, globalCache) {
-  let originalContent = null;
-  const { slug, id: sourceItemId } = item; // Destructure source ID from item
-  const timerLabel = `Processing ${contentType} '${slug}' (Source ID: ${sourceItemId})`;
+async function processItem(job, globalCache) {
+  const { slug, contentType, language, source_item_id } = job;
+  const logPrefix = ` -> [${slug} -> ${language}]`;
+  const timerLabel = `Job ${slug}/${language}`; // Timer specific to this job
+
   console.time(timerLabel);
+  console.log(
+    `${logPrefix} Starting translation job for Source ID: ${source_item_id}.`,
+  );
+
+  let originalContent = null; // To store fetched content
 
   try {
-    console.log(`\n=== ${timerLabel} ===`);
-
-    // --- Step 1: Fetch Original Content ---
-    // Crucial to proceed, fail fast if the source doesn't exist.
-    try {
-      originalContent = await fetchContent(slug, contentType);
-      if (!originalContent || !originalContent.id) {
-        // Fetch might return empty array, or item might lack an ID
-        console.warn(
-          `   Skipping: Could not fetch valid original content or ID for slug ${slug}.`,
-        );
-        console.timeEnd(timerLabel);
-        return; // Stop processing this item
-      }
-      // Optional: Verify fetched ID matches input sourceItemId if needed
-      if (originalContent.id !== sourceItemId) {
-        console.warn(
-          `   Source ID mismatch for slug ${slug}. Input: ${sourceItemId}, Fetched: ${originalContent.id}. Proceeding with fetched ID.`,
-        );
-      }
-    } catch (fetchError) {
-      console.error(
-        ` ❌ FAILED to fetch original content for ${slug}. Skipping item. Error: ${fetchError.message}`,
+    // --- Step 1: Mark Job as 'translating' in DB ---
+    // This prevents other workers/runs picking it up simultaneously.
+    const markedTranslating = await statusManager.updateJobStatus(
+      slug,
+      contentType,
+      language,
+      "translating",
+    );
+    if (!markedTranslating) {
+      // This could happen if the job was deleted or another race condition.
+      console.warn(
+        `${logPrefix} Failed to mark job as 'translating'. Skipping.`,
       );
       console.timeEnd(timerLabel);
-      return; // Stop processing this item if fetch fails
+      return; // Stop processing this job
     }
 
-    const originalItemId = originalContent.id; // Use the definitive ID from the fetched content
-
-    // --- Step 2: Process Each Target Language ---
-    const languageProcessingPromises = targetLangs.map(async (lang) => {
-      const logPrefix = ` -> [${slug} -> ${lang}]`;
-
-      // --- Determine Expected Output Path & Status Key ---
-      const expectedOutputFileDir = path.join(OUTPUT_DIR, contentType, slug);
-      const expectedOutputFilename = `${slug}_${lang}.json`;
-      const expectedOutputFilePath = path.join(
-        expectedOutputFileDir,
-        expectedOutputFilename,
-      );
-      const relativePathForStatus = statusTracker.getRelativePath(
-        expectedOutputFilePath,
-      );
-
-      // --- Resumeability Check: Upload Status ---
-      try {
-        const fileStatus = statusTracker.getFileStatus(relativePathForStatus);
-
-        if (fileStatus.status === "completed") {
-          console.log(
-            `${logPrefix} Skipping: Upload previously marked as 'completed'.`,
-          );
-          return { lang, status: "skipped_completed" };
-        } else if (fileStatus.status === "uploading") {
-          // Avoid translating if an upload might be in progress (though unlikely if service restarts)
-          console.log(
-            `${logPrefix} Skipping: Upload potentially in progress (status: 'uploading'). Will retry later.`,
-          );
-          return { lang, status: "skipped_uploading" };
-        }
-        // If status is 'pending' or 'failed', or file is untracked, we proceed.
-      } catch (statusError) {
+    // --- Step 2: Fetch Original Content ---
+    console.log(`${logPrefix} Fetching original content...`);
+    try {
+      originalContent = await fetchContent(slug, contentType); // Assuming fetchContent uses slug primarily
+      // Validate fetched content and ID
+      if (!originalContent || !originalContent.id) {
+        throw new Error(`Could not fetch valid original content or ID.`);
+      }
+      if (originalContent.id !== source_item_id) {
+        // Log mismatch but proceed with the fetched ID as the definitive source for translation context
         console.warn(
-          `${logPrefix} Error checking upload status for ${relativePathForStatus}: ${statusError.message}. Proceeding with translation.`,
+          `${logPrefix} Source ID mismatch. Job expected ${source_item_id}, fetched ${originalContent.id}. Using fetched ID ${originalContent.id} for translation context.`,
         );
+        // It's crucial that saveToFile and other logic uses the *correct* original ID for Strapi linking later
+        // Let's stick to source_item_id from the job for consistency downstream
       }
+    } catch (fetchError) {
+      // If fetching fails, mark job as failed_translation and stop
+      throw new Error(
+        `Failed to fetch original content: ${fetchError.message}`,
+      ); // Throw to main catch block
+    }
 
-      // --- Proceed with Translation and Saving ---
-      try {
-        console.log(`${logPrefix} Translating...`);
-        globalCache[lang] = globalCache[lang] || {}; // Ensure language cache exists
-        const translator = new TranslationService(
-          GOOGLE_API_KEY,
-          lang,
-          globalCache[lang], // Pass language-specific cache
-        );
+    // --- Step 3: Translate Content ---
+    console.log(`${logPrefix} Translating content...`);
+    globalCache[language] = globalCache[language] || {}; // Ensure language cache exists
+    const translator = new TranslationService(
+      GOOGLE_API_KEY,
+      language,
+      globalCache[language],
+    );
 
-        // Translate using the fetched original content
-        const translationResult = await translator.translateContent(
-          originalContent, // Pass { id, attributes } object
-          lang,
-        );
+    const translationResult = await translator.translateContent(
+      originalContent, // Pass the fetched content object { id, attributes }
+      language,
+    );
 
-        // Validate the result before saving
-        const translatedAttributes =
-          translationResult.attributes || translationResult;
-        if (
-          !translatedAttributes ||
-          typeof translatedAttributes !== "object" ||
-          Object.keys(translatedAttributes).length === 0
-        ) {
-          throw new Error("Translation result was empty or invalid.");
-        }
+    // Validate the result
+    const translatedAttributes =
+      translationResult.attributes || translationResult;
+    if (
+      !translatedAttributes ||
+      typeof translatedAttributes !== "object" ||
+      Object.keys(translatedAttributes).length === 0
+    ) {
+      throw new Error("Translation result was empty or invalid.");
+    }
 
-        // Save the validated translated attributes
-        const savedFilePath = saveToFile(
-          translatedAttributes,
-          lang,
-          originalItemId, // Use fetched original ID
-          slug,
-          contentType,
-        );
-        console.log(
-          `${logPrefix} ✓ Saved translation JSON to ${path.basename(savedFilePath)}`,
-        );
-
-        // --- Update Upload Status to Pending ---
-        // Ensures the upload service knows this file is ready.
-        try {
-          const relativeSavedPath =
-            statusTracker.getRelativePath(savedFilePath); // Should be same as relativePathForStatus
-          const currentStatusInfo =
-            statusTracker.getFileStatus(relativeSavedPath);
-          // Update to 'pending' unless it's already definitively 'failed' or 'completed' (edge case)
-          if (
-            currentStatusInfo.status !== "failed" &&
-            currentStatusInfo.status !== "completed"
-          ) {
-            statusTracker.uploadStatus.files[relativeSavedPath] = {
-              ...currentStatusInfo, // Keep existing timestamps if relevant
-              status: "pending",
-              error: null, // Clear previous error if any
-            };
-            statusTracker.saveStatus();
-            console.log(`${logPrefix} Updated upload status to 'pending'.`);
-          } else {
-            console.log(
-              `${logPrefix} Keeping existing status '${currentStatusInfo.status}'.`,
-            );
-          }
-        } catch (statusUpdateError) {
-          console.warn(
-            `${logPrefix} Failed to update status to pending after saving: ${statusUpdateError.message}`,
-          );
-        }
-
-        return { lang, status: "success_translated" };
-      } catch (langError) {
-        // Catch errors specifically from translation or saving for this language
-        console.error(
-          `${logPrefix} ❌ FAILED translation or saving: ${langError.message}`,
-        );
-        console.error(langError.stack); // Log stack trace for better debugging
-        // Return error status for Promise.allSettled
-        return { lang, status: "error", error: langError.message };
-      }
-    }); // End targetLangs.map
-
-    // --- Step 3: Wait for all languages and Summarize ---
-    const results = await Promise.allSettled(languageProcessingPromises);
-
-    console.timeEnd(timerLabel); // End timer after all promises settle
-
-    // Log summary for the item
-    let skippedCompletedCount = 0;
-    let skippedUploadingCount = 0;
-    let successCount = 0;
-    let errorCount = 0;
-
-    results.forEach((result) => {
-      if (result.status === "fulfilled") {
-        switch (result.value.status) {
-          case "skipped_completed":
-            skippedCompletedCount++;
-            break;
-          case "skipped_uploading":
-            skippedUploadingCount++;
-            break;
-          case "success_translated":
-            successCount++;
-            break;
-          case "error":
-            errorCount++;
-            break; // Error handled within the map's catch
-        }
-      } else {
-        // Should ideally not happen if errors are caught inside the map
-        console.error(
-          `   -> Unexpected Promise rejection for a language of ${slug}: ${result.reason}`,
-        );
-        errorCount++;
-      }
-    });
-
+    // --- Step 4: Save Translation to File ---
+    console.log(`${logPrefix} Saving translation to file...`);
+    const savedFilePath = saveToFile(
+      translatedAttributes,
+      language,
+      source_item_id, // IMPORTANT: Use the source_item_id from the job for correct linking info
+      slug,
+      contentType,
+    );
     console.log(
-      `--- Summary for ${slug}: Translated: ${successCount}, Skipped (Completed): ${skippedCompletedCount}, Skipped (Uploading): ${skippedUploadingCount}, Failed: ${errorCount} ---`,
+      `${logPrefix} ✓ Saved translation JSON to ${path.basename(savedFilePath)}`,
     );
+
+    // Calculate relative path for storage in DB (relative to the defined OUTPUT_DIR)
+    const relativeSavedPath = path
+      .relative(OUTPUT_DIR, savedFilePath)
+      .replace(/\\/g, "/"); // Normalize slashes
+
+    // --- Step 5: Mark Job as 'pending_upload' in DB ---
+    console.log(`${logPrefix} Updating job status to 'pending_upload'.`);
+    await statusManager.updateJobStatus(
+      slug,
+      contentType,
+      language,
+      "pending_upload",
+      {
+        translationFilePath: relativeSavedPath, // Store the relative path
+        error: null, // Clear any previous error
+      },
+    );
+
+    console.log(`${logPrefix} ✓ Job finished successfully.`);
   } catch (error) {
-    // Catch errors from initial setup/fetch before the language loop
-    console.timeEnd(timerLabel); // Ensure timer ends even on outer error
-    const itemIdForLog = originalContent ? originalContent.id : sourceItemId; // Use sourceItemId if fetch failed
-    console.error(
-      `❌ Top-level FAILED processing item ${contentType} / ${slug} (Source ID: ${itemIdForLog}): ${error.message}`,
-    );
-    console.error(error.stack);
+    // Catch any error from Steps 2-4
+    console.error(`${logPrefix} ❌ FAILED translation job: ${error.message}`);
+    console.error(error.stack); // Log stack for debugging
+
+    // Mark Job as 'failed_translation' in DB
+    try {
+      await statusManager.updateJobStatus(
+        slug,
+        contentType,
+        language,
+        "failed_translation",
+        { error: error.message }, // Store the error message
+      );
+      console.log(`${logPrefix} Job status updated to 'failed_translation'.`);
+    } catch (updateError) {
+      console.error(
+        `${logPrefix} ‼️ CRITICAL: Failed to update job status to failed_translation after error: ${updateError.message}`,
+      );
+    }
+    // Do not re-throw here if the main concurrency loop catches rejections separately
+    // throw error; // Re-throw if the calling concurrency loop needs to know about the failure explicitly
+  } finally {
+    console.timeEnd(timerLabel); // Ensure timer always ends
   }
 }
 
 /**
- * Main function to fetch report slugs and translate them.
+ * Main function to fetch report slugs, initialize DB jobs,
+ * and translate pending jobs concurrently.
  */
 async function main() {
-  const globalTranslationCache = loadCache();
+  // --- Initialize DB Connection/Table ---
+  // This ensures the table exists before we try to use it. Safe to call multiple times.
+  try {
+    await db.initializeDatabase();
+  } catch (dbInitError) {
+    console.error(
+      "CRITICAL: Failed to initialize database. Exiting.",
+      dbInitError,
+    );
+    process.exit(1); // Exit if DB is not available/setup
+  }
 
-  let isSaving = false; // Flag to prevent double saving on exit
+  const globalTranslationCache = loadCache();
+  let isSaving = false; // Flag for shutdown handler
+
+  // Setup graceful shutdown for cache saving
   const shutdownHandler = () => {
     if (!isSaving) {
       isSaving = true;
       console.log("\nShutdown signal received.");
-      saveCache(globalTranslationCache); // Attempt to save cache
+      saveCache(globalTranslationCache);
+      // NOTE: We don't close the DB pool here, as this main function
+      // might be called periodically by fetch-translate.js. Let the pool manage connections.
+      // If this were a single-run script, you might add db.pool.end() here.
       process.exit(0); // Exit cleanly
     }
   };
   process.on("SIGINT", shutdownHandler); // Catch Ctrl+C
   process.on("SIGTERM", shutdownHandler); // Catch kill command
 
-  const mainTimerLabel = "Total Script Execution Time";
+  const mainTimerLabel = "Total Translation Script Execution Time";
   console.time(mainTimerLabel);
-  console.log(`Starting translation process with auto-fetched reports...`);
+  console.log(
+    `Starting translation process... Concurrency: ${MAX_CONCURRENT_TRANSLATIONS}, Max Source Reports: ${MAX_REPORTS}`,
+  );
+  console.log(`Target languages: ${TARGET_LANGS.join(", ")}`);
 
-  // Fetch report slugs automatically
   try {
-    // Define the content type we're working with
-    const contentType = "reports";
+    // --- Step 1: Fetch Source Slugs/IDs ---
+    const contentType = "reports"; // Define content type
+    const reportSlugsAndIds = await fetchReportSlugs(MAX_REPORTS);
 
-    // Fetch the slugs from Strapi
-    const reportSlugs = await fetchReportSlugs(MAX_REPORTS);
+    if (!reportSlugsAndIds || reportSlugsAndIds.length === 0) {
+      console.log("No source report slugs found to process.");
+      console.timeEnd(mainTimerLabel);
+      if (!isSaving) saveCache(globalTranslationCache); // Save cache even if no reports found
+      return; // Nothing to do
+    }
     console.log(
-      `\n--- Auto-fetched ${reportSlugs.length} reports from Strapi ---`,
+      `Fetched ${reportSlugsAndIds.length} source reports from Strapi.`,
     );
-    console.log(`Target languages: ${TARGET_LANGS.join(", ")}`);
 
-    // Process each report sequentially
-    for (const reportData of reportSlugs) {
-      await processItem(
-        reportData, // Contains slug and id
-        contentType, // "reports"
-        TARGET_LANGS, // Languages to translate to
-        globalTranslationCache, // Cache object
+    // --- Step 2: Initialize/Verify DB Job Entries ---
+    // Ensures a DB row exists for every report/language combination fetched.
+    // Doesn't overwrite existing statuses.
+    await statusManager.initializeJobs(
+      reportSlugsAndIds,
+      TARGET_LANGS,
+      contentType,
+    );
+
+    // --- Step 3: Fetch Pending Translation Jobs ---
+    // Get jobs that are actually ready for translation (pending or failed previously)
+    // Limit fetch slightly arbitarily - adjust if needed based on typical pending counts
+    const pendingJobs = await statusManager.getPendingTranslationJobs(
+      MAX_REPORTS * TARGET_LANGS.length,
+    );
+
+    if (pendingJobs.length === 0) {
+      console.log(
+        "No jobs currently require translation (status 'pending_translation' or 'failed_translation').",
       );
+      console.timeEnd(mainTimerLabel);
+      if (!isSaving) saveCache(globalTranslationCache);
+      return; // Nothing to process right now
     }
 
-    console.log(`\nCompleted processing ${reportSlugs.length} reports`);
+    console.log(
+      `\n--- Found ${pendingJobs.length} translation jobs to process. Starting concurrent processing... ---`,
+    );
+
+    // --- Step 4: Process Pending Jobs Concurrently ---
+    let jobsProcessedSuccessfully = 0; // Count jobs where processItem resolves without throwing
+    let jobsFailedCritically = 0; // Count jobs where processItem rejects or fails fundamentally
+    const results = []; // Store outcomes if needed
+    let running = 0;
+    let jobIndex = 0;
+
+    await new Promise((resolve) => {
+      function runNextTranslationJob() {
+        // Base case: All jobs have been started
+        if (jobIndex >= pendingJobs.length) {
+          // If no jobs are currently running, we're done.
+          if (running === 0) {
+            console.log("[Main] All pending jobs processed or started.");
+            resolve();
+          } else {
+            // console.log(`[Main] Waiting for ${running} running jobs to finish...`);
+          }
+          return; // Exit function if all started or resolved
+        }
+
+        // Launch next job(s) if concurrency limit allows
+        while (
+          running < MAX_CONCURRENT_TRANSLATIONS &&
+          jobIndex < pendingJobs.length
+        ) {
+          running++;
+          const currentJob = pendingJobs[jobIndex++];
+          const jobLogPrefix = `[Job ${jobIndex}/${pendingJobs.length}: ${currentJob.slug} -> ${currentJob.language}]`;
+
+          console.log(`${jobLogPrefix} Starting...`);
+
+          // Execute processItem for the current job
+          processItem(currentJob, globalTranslationCache)
+            .then(() => {
+              // processItem handles its own internal success/failure logging and status updates
+              results.push({ job: currentJob, status: "fulfilled" });
+              jobsProcessedSuccessfully++; // Increment if processItem completes
+            })
+            .catch((itemError) => {
+              // This catch block is for unexpected errors thrown BY processItem itself
+              // (processItem should ideally handle internal errors and update status)
+              console.error(
+                `${jobLogPrefix} CRITICAL error during processItem: ${itemError.message}`,
+              );
+              results.push({
+                job: currentJob,
+                status: "rejected",
+                reason: itemError,
+              });
+              jobsFailedCritically++; // Increment critical failure count
+            })
+            .finally(() => {
+              running--;
+              console.log(
+                `${jobLogPrefix} Finished. Running tasks: ${running}.`,
+              );
+              // Check if we need to resolve the main promise or run the next job
+              if (jobIndex >= pendingJobs.length && running === 0) {
+                resolve();
+              } else {
+                // Try to launch the next job immediately
+                runNextTranslationJob();
+              }
+            });
+        } // End while loop
+      } // End runNextTranslationJob function
+
+      // Start the initial batch of jobs
+      runNextTranslationJob();
+    }); // End Promise for concurrency limiter
+    // --- End Concurrency Limiter ---
+
+    console.log(`\n--- Concurrent translation processing finished ---`);
+    console.log(`Total Pending Jobs Attempted: ${pendingJobs.length}`);
+    console.log(
+      `Jobs Completed (processItem resolved): ${jobsProcessedSuccessfully}`,
+    );
+    console.log(`Jobs Failed (processItem rejected): ${jobsFailedCritically}`);
   } catch (error) {
-    console.error(`Error in main process: ${error.message}`);
+    console.error(`❌ Error in main translation process: ${error.message}`);
+    console.error(error.stack);
   }
 
-  console.log("\nTranslation and JSON saving process completed.");
+  console.log("\nTranslation and JSON saving process completed for this run.");
   console.timeEnd(mainTimerLabel);
 
-  // Save cache at the end of a successful run
+  // Save cache at the end of the run
   if (!isSaving) {
     saveCache(globalTranslationCache);
   }
@@ -567,9 +624,9 @@ async function main() {
 // Run script if directly invoked
 if (require.main === module) {
   main()
-    .then(() => console.log("\nScript finished successfully."))
+    .then(() => console.log("\nTranslation script run finished successfully."))
     .catch((err) => {
-      console.error("\n--- SCRIPT FAILED ---");
+      console.error("\n--- TRANSLATION SCRIPT FAILED ---");
       console.error(err);
       process.exit(1); // Exit with error code
     });

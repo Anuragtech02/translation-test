@@ -1,35 +1,36 @@
+# translation-viewer/Dockerfile
+
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy root package files (assuming viewer deps like ejs, express are included)
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies based on root package.json
 RUN npm install
 
-# Create necessary directories
+# --- Create directories needed by the viewer ---
 RUN mkdir -p ./translation-viewer/views
 RUN mkdir -p ./translation-viewer/routes
-RUN mkdir -p ./translation-viewer/public
-RUN mkdir -p ./translations
-RUN mkdir -p ./translation-cache
+RUN mkdir -p ./translation-viewer/public # For potential future CSS/JS
 
-# Copy application files
+# --- Copy required modules from root ---
+# Adjust paths if your db/statusManager are located differently
+COPY db.js ./
+COPY statusManager.js ./
+
+# --- Copy viewer-specific application files ---
 COPY translation-viewer/app.js ./translation-viewer/
-COPY translation-viewer/views/ ./translation-viewer/views/
 COPY translation-viewer/routes/ ./translation-viewer/routes/
+COPY translation-viewer/views/ ./translation-viewer/views/
 COPY translation-viewer/public/ ./translation-viewer/public/
-COPY translation-viewer/package.json ./translation-viewer/
-COPY uploadStatusTracker.js ./
-COPY uploadService.js ./
 
-# Create empty upload-status.json file
-# RUN echo '{"lastUpdated":"2023-01-01T00:00:00.000Z","currentlyUploading":null,"files":{}}' > upload-status.json
+# --- NO JSON file creation needed ---
 
-# Set environment variables
+# Environment variables will be set via docker-compose
 ENV PORT=3000
-ENV TRANSLATIONS_DIR=/app/translations
+ENV NODE_ENV=production
 
 # Expose port
 EXPOSE 3000
