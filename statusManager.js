@@ -169,31 +169,36 @@ async function getPendingUploadJobs(limit = 50) {
 }
 
 // --- Add functions for viewer ---
+// statusManager.js -> getAllJobStatuses function
 async function getAllJobStatuses(page = 1, limit = 50, filterStatus = null) {
   const offset = (page - 1) * limit;
   let whereClause = "";
-  const values = [limit, offset];
+  let whereClauseForCount = ""; // Separate clause for count query parameter index
+  const dataValues = [limit, offset];
+  const countValues = []; // Separate values array for count query
+
   if (filterStatus && filterStatus !== "all") {
-    whereClause = "WHERE status = $3";
-    values.push(filterStatus);
+    whereClause = "WHERE status = $3"; // Data query uses $3
+    whereClauseForCount = "WHERE status = $1"; // Count query uses $1
+    dataValues.push(filterStatus);
+    countValues.push(filterStatus); // Add filter to count values
   }
 
-  const selectQuery = `
-    SELECT slug, content_type, language, status, last_error, updated_at, source_item_id, target_item_id
-    FROM translation_jobs
-    ${whereClause}
-    ORDER BY updated_at DESC
-    LIMIT $1 OFFSET $2;
-  `;
-  const countQuery = `SELECT COUNT(*) FROM translation_jobs ${whereClause};`;
+  const selectDataQuery = `
+        SELECT slug, content_type, language, status, last_error, updated_at, source_item_id, target_item_id
+        FROM translation_jobs
+        ${whereClause}
+        ORDER BY updated_at DESC
+        LIMIT $1 OFFSET $2;
+    `;
+  // Count query uses its own where clause with $1 if needed
+  const countQuery = `SELECT COUNT(*) FROM translation_jobs ${whereClauseForCount};`;
 
   try {
+    // Pass the correct parameter arrays to each query
     const [dataResult, countResult] = await Promise.all([
-      query(selectQuery, values),
-      query(
-        countQuery,
-        filterStatus && filterStatus !== "all" ? [filterStatus] : [],
-      ),
+      query(selectDataQuery, dataValues),
+      query(countQuery, countValues), // Use countValues here
     ]);
     return {
       jobs: dataResult.rows,
