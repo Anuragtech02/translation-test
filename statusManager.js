@@ -123,15 +123,20 @@ async function updateJobStatus(
  */
 async function getPendingTranslationJobs(limit = 50) {
   const selectQuery = `
-    SELECT slug, content_type, language, source_item_id
-    FROM translation_jobs
-    WHERE status = 'pending_translation' OR status = 'failed_translation'
-    ORDER BY updated_at ASC -- Process older ones first
-    LIMIT $1;
-  `;
+     SELECT
+       slug,
+       content_type, -- <<< FIX: Ensure this column is selected
+       language,
+       source_item_id
+     FROM translation_jobs
+     WHERE status = 'pending_translation' OR status = 'failed_translation'
+     ORDER BY updated_at ASC -- Process older ones first
+     LIMIT $1;
+   `;
   try {
     const result = await query(selectQuery, [limit]);
-    return result.rows; // Returns array of { slug, contentType, language, source_item_id }
+    // Now returns array of { slug, content_type, language, source_item_id }
+    return result.rows;
   } catch (error) {
     console.error(
       "[StatusManager] Error getting pending translation jobs:",
