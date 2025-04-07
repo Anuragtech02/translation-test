@@ -62,7 +62,10 @@ async function processSingleUploadJob(job) {
 
   // Construct the absolute path to the translation file WITHIN THIS CONTAINER
   // Assumes translation_file_path was stored relative to OUTPUT_DIR by the translation service
-  const absoluteFilePath = path.resolve(OUTPUT_DIR, translation_file_path);
+  const absoluteFilePath = path.resolve(
+    TRANSLATIONS_DIR,
+    translation_file_path,
+  );
   console.log(`${logPrefix} File path resolved to: ${absoluteFilePath}`);
 
   try {
@@ -687,7 +690,7 @@ async function startService() {
   }
 
   // --- Step 3: Start Periodic Processing ---
-  console.log(`Using translations base directory: ${OUTPUT_DIR}`);
+  console.log(`Using translations base directory: ${TRANSLATIONS_DIR}`);
   console.log(
     `Checking for pending upload jobs every ${UPLOAD_CHECK_INTERVAL_MS / 1000} seconds.`,
   );
