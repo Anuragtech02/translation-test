@@ -122,10 +122,32 @@ class TranslationService {
     console.log(
       `     --> Attempt ${attemptNumber} using ${modelName} for batch of ${expectedCount}...`,
     );
-    const result = await modelInstance.generateContent(prompt);
+    let result;
+
+    try {
+      result = await modelInstance.generateContent(prompt);
+      // --- ADDED: Explicit Check for Blocked Response ---
+      const blockReason = result?.response?.promptFeedback?.blockReason;
+      if (blockReason) {
+        const blockMessage = `API Call Blocked by Safety Filter (${modelName}). Reason: ${blockReason}.`;
+        console.error(`     --> FAILED: ${blockMessage}`);
+        // Optionally include safety ratings details if needed: console.error(result.response.promptFeedback?.safetyRatings);
+        throw new Error(blockMessage); // Throw specific error
+      }
+      // --- END ADDED CHECK ---
+    } catch (apiError) {
+      // Catch errors during the API call itself (network, auth, or SDK-thrown blocking errors)
+      console.error(
+        `     --> FAILED: API call error with ${modelName} (Attempt ${attemptNumber}): ${apiError.message}`,
+      );
+      throw apiError; // Re-throw the original error
+    }
     const responseText = result.response.text().trim();
     const jsonMatch = responseText.match(/\[.*\]/s);
     if (!jsonMatch || !jsonMatch[0]) {
+      console.error(
+        `     --> FAILED: Valid JSON array structure not found in response from ${modelName}. Possible partial block or formatting issue.`,
+      );
       throw new Error(
         `Valid JSON array structure not found in response from ${modelName}. Raw start: "${responseText.substring(0, 100)}..."`,
       );
@@ -157,6 +179,7 @@ class TranslationService {
 
   async translateSingleBatch(batchFragments) {
     const maxAttemptsPerModel = 2;
+    let primaryLastError; // Store last error from primary model specifically
     let lastError;
     const expectedCount = batchFragments.length;
     if (expectedCount === 0) return [];
@@ -173,6 +196,11 @@ class TranslationService {
           attempt,
         );
       } catch (error) {
+        primaryLastError = error; // Store the specific error
+        // Log the specific error reason
+        console.error(
+          `   -> Primary Model (${PRIMARY_MODEL_NAME}) Attempt ${attempt} failed for ${this.targetLanguage}: ${error.message}`,
+        );
         lastError = error;
         console.error(
           `   -> Primary Model Attempt ${attempt} failed for ${this.targetLanguage}: ${error.message}`,
@@ -186,9 +214,9 @@ class TranslationService {
         }
       }
     }
-    // Try Fallback
+    // Try Fallback - Log the reason for fallback more explicitly
     console.warn(
-      `   -> Primary model failed after ${maxAttemptsPerModel} attempts. Trying fallback model (${FALLBACK_MODEL_NAME})...`,
+      `   -> Primary model failed after ${maxAttemptsPerModel} attempts. Last primary error: "${primaryLastError?.message || "Unknown"}". Trying fallback model (${FALLBACK_MODEL_NAME})...`,
     );
     const fallbackModelInstance = this._getFallbackModel();
     for (let attempt = 1; attempt <= maxAttemptsPerModel; attempt++) {
@@ -200,9 +228,9 @@ class TranslationService {
           attempt,
         );
       } catch (error) {
-        lastError = error;
+        fallbackLastError = error; // Store fallback error
         console.error(
-          `   -> Fallback Model Attempt ${attempt} failed for ${this.targetLanguage}: ${error.message}`,
+          `   -> Fallback Model (${FALLBACK_MODEL_NAME}) Attempt ${attempt} failed for ${this.targetLanguage}: ${error.message}`,
         );
         if (attempt < maxAttemptsPerModel) {
           const delay = 1500 * Math.pow(2, attempt);
@@ -213,10 +241,22 @@ class TranslationService {
         }
       }
     }
+    // If fallback also failed
     console.error(
-      `   -> Translation failed permanently for batch (both models) for ${this.targetLanguage} after ${maxAttemptsPerModel * 2} total attempts.`,
+      `   -> Translation FAILED PERMANENTLY for batch (both models) for ${this.targetLanguage} after ${maxAttemptsPerModel * 2} total attempts.`,
     );
-    throw lastError;
+    console.error(
+      `      Last Primary Error: ${primaryLastError?.message || "N/A"}`,
+    );
+    console.error(
+      `      Last Fallback Error: ${fallbackLastError?.message || "N/A"}`,
+    );
+    // Throw the most recent error encountered (likely from the fallback model)
+    throw (
+      fallbackLastError ||
+      primaryLastError ||
+      new Error("Translation failed after all attempts.")
+    );
   }
 
   async translate(fragments) {
