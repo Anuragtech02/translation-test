@@ -16,6 +16,7 @@ const UPLOAD_DELAY_MS = parseInt(process.env.UPLOAD_DELAY_MS || "500", 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || "3", 10);
 const RETRY_DELAY_MS = parseInt(process.env.RETRY_DELAY_MS || "2000", 10);
 const MAX_SEO_TITLE_LENGTH = 297;
+const MAX_SEO_DESC_LENGTH = 297;
 
 const LOCALIZED_FIELDS_TO_SEND = [
   "title",
@@ -684,12 +685,12 @@ async function pushSingleTranslation(translationData) {
               );
             }
 
-            // --- START: ADD TRUNCATION LOGIC ---
+            // --- START: ADD/MODIFY TRUNCATION LOGIC ---
             console.log(
               `   [SEO Truncate Check] Checking lengths for ${targetLocale}/${originalSlug}...`,
             );
 
-            // Truncate seo.metaTitle if needed
+            // --- Truncate seo.metaTitle ---
             if (
               seoPayload.metaTitle &&
               typeof seoPayload.metaTitle === "string" &&
@@ -705,33 +706,72 @@ async function pushSingleTranslation(translationData) {
               );
             }
 
-            // Truncate seo.metaSocial[].title if needed
+            // --- Truncate seo.metaDescription ---
+            if (
+              seoPayload.metaDescription &&
+              typeof seoPayload.metaDescription === "string" &&
+              seoPayload.metaDescription.length > MAX_SEO_DESC_LENGTH
+            ) {
+              console.warn(
+                `   [Truncating] seo.metaDescription. Original length: ${seoPayload.metaDescription.length}`,
+              );
+              seoPayload.metaDescription =
+                seoPayload.metaDescription.substring(0, MAX_SEO_DESC_LENGTH) +
+                "...";
+              console.warn(
+                `   [Truncating] New seo.metaDescription length: ${seoPayload.metaDescription.length}`,
+              );
+            }
+
+            // --- Truncate seo.metaSocial[].title AND seo.metaSocial[].description ---
             if (seoPayload.metaSocial && Array.isArray(seoPayload.metaSocial)) {
               // Use map to create a new array with potentially modified entries
               seoPayload.metaSocial = seoPayload.metaSocial.map(
                 (entry, index) => {
+                  let modified = false;
+                  const newEntry = { ...entry }; // Work on a copy
+
+                  // Truncate title
                   if (
-                    entry.title &&
-                    typeof entry.title === "string" &&
-                    entry.title.length > MAX_SEO_TITLE_LENGTH
+                    newEntry.title &&
+                    typeof newEntry.title === "string" &&
+                    newEntry.title.length > MAX_SEO_TITLE_LENGTH
                   ) {
                     console.warn(
-                      `   [Truncating] seo.metaSocial[${index}].title. Original length: ${entry.title.length}`,
+                      `   [Truncating] seo.metaSocial[${index}].title. Original length: ${newEntry.title.length}`,
                     );
-                    const truncatedTitle =
-                      entry.title.substring(0, MAX_SEO_TITLE_LENGTH) + "...";
+                    newEntry.title =
+                      newEntry.title.substring(0, MAX_SEO_TITLE_LENGTH) + "...";
                     console.warn(
-                      `   [Truncating] New seo.metaSocial[${index}].title length: ${truncatedTitle.length}`,
+                      `   [Truncating] New seo.metaSocial[${index}].title length: ${newEntry.title.length}`,
                     );
-                    // Return a *new* object with the truncated title
-                    return { ...entry, title: truncatedTitle };
+                    modified = true;
                   }
-                  // Return the original entry if no truncation is needed
-                  return entry;
+
+                  // Truncate description
+                  if (
+                    newEntry.description &&
+                    typeof newEntry.description === "string" &&
+                    newEntry.description.length > MAX_SEO_DESC_LENGTH
+                  ) {
+                    console.warn(
+                      `   [Truncating] seo.metaSocial[${index}].description. Original length: ${newEntry.description.length}`,
+                    );
+                    newEntry.description =
+                      newEntry.description.substring(0, MAX_SEO_DESC_LENGTH) +
+                      "...";
+                    console.warn(
+                      `   [Truncating] New seo.metaSocial[${index}].description length: ${newEntry.description.length}`,
+                    );
+                    modified = true;
+                  }
+
+                  // Return the modified or original entry
+                  return newEntry;
                 },
               );
             }
-            // --- END: ADD TRUNCATION LOGIC --
+            // --- END: ADD/MODIFY TRUNCATION LOGIC ---
 
             // 4. Assign the carefully constructed seoPayload
             payloadData.seo = seoPayload;
