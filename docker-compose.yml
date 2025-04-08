@@ -79,7 +79,9 @@ services:
       - DATABASE_USER=${EXTERNAL_DATABASE_USER} # <= Username for external DB
       - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD} # <= Password for external DB
     depends_on:
-      - translation-service
+      # Make sure init finishes (successfully) before starting
+      db-init:
+        condition: service_completed_successfully
     networks:
       - translation-network
 
