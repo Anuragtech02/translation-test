@@ -480,53 +480,67 @@ async function main() {
           running++;
           const currentJob = pendingJobs[jobIndex++];
 
-          // --- Log currentJob again JUST before the check ---
-          console.log(
-            `[Main Loop Pre-Check] Processing index ${jobIndex - 1}. Job Data:`,
-            JSON.stringify(currentJob),
-          );
-          // ---
-
-          // --- Critical Check (with detailed debug logging from previous step) ---
           console.log(
             `[DEBUG Job Check ${jobIndex}] Raw Job Data:`,
             JSON.stringify(currentJob),
-          );
+          ); // Keep this
+
           if (currentJob) {
+            // --- ADDED KEY LOGGING ---
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] Object Keys:`,
+              Object.keys(currentJob),
+            );
+            // --- ADDED EXPLICIT ACCESS LOG ---
+            let contentTypeValue = currentJob.content_type; // Access using standard property name
+            console.log(
+              `[DEBUG Job Check ${jobIndex}] Explicit Access content_type: Value='${contentTypeValue}', Type=${typeof contentTypeValue}`,
+            );
+            // ---
+
+            // Original detailed checks
             console.log(
               `[DEBUG Job Check ${jobIndex}] Slug Check: Value='${currentJob.slug}', Type=${typeof currentJob.slug}, Falsy=${!currentJob.slug}`,
             );
+            // Use the explicitly accessed variable for the check log
             console.log(
-              `[DEBUG Job Check ${jobIndex}] ContentType Check: Value='${currentJob.contentType}', Type=${typeof currentJob.contentType}, Falsy=${!currentJob.contentType}`,
-            ); // <-- Focus here
+              `[DEBUG Job Check ${jobIndex}] ContentType Check: Value='${contentTypeValue}', Type=${typeof contentTypeValue}, Falsy=${!contentTypeValue}`,
+            );
             console.log(
               `[DEBUG Job Check ${jobIndex}] Language Check: Value='${currentJob.language}', Type=${typeof currentJob.language}, Falsy=${!currentJob.language}`,
             );
             console.log(
               `[DEBUG Job Check ${jobIndex}] SourceID Check: Value='${currentJob.source_item_id}', Type=${typeof currentJob.source_item_id}, Falsy=${!currentJob.source_item_id}`,
             );
+
+            // --- Modify the IF condition to use the explicitly accessed value ---
+            if (
+              !currentJob ||
+              !currentJob.slug ||
+              !contentTypeValue ||
+              !currentJob.language ||
+              !currentJob.source_item_id
+            ) {
+              console.error(
+                `[Main] Invalid job data encountered at index ${jobIndex - 1}. Skipping. Condition Failed. Explicit ContentType Value: ${contentTypeValue}`,
+              ); // Log the value again
+              running--;
+              jobsFailedCritically++;
+              runNextTranslationJob(); // Try next immediately
+              continue; // Skip to next iteration of while loop
+            }
+            // --- End modification to IF condition ---
           } else {
             console.log(`[DEBUG Job Check ${jobIndex}] !currentJob is TRUE`);
-          }
-          // --- End detailed debug logging ---
-
-          // --- Critical Check: Ensure job object is valid ---
-          if (
-            !currentJob ||
-            !currentJob.slug ||
-            !currentJob.contentType ||
-            !currentJob.language ||
-            !currentJob.source_item_id
-          ) {
+            // Also fail if currentJob is null/undefined
             console.error(
-              `[Main] Invalid job data encountered at index ${jobIndex - 1}. Skipping. Condition Failed.`,
-            ); // Modified message
+              `[Main] Invalid job data encountered at index ${jobIndex - 1}. Skipping. currentJob is null/undefined.`,
+            );
             running--;
             jobsFailedCritically++;
             runNextTranslationJob();
             continue;
           }
-          // --- End Check ---
 
           const jobLogPrefix = `[Job ${jobIndex}/${pendingJobs.length}: ${currentJob.slug} -> ${currentJob.language}]`;
           console.log(`${jobLogPrefix} Starting...`);
