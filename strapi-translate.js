@@ -245,6 +245,11 @@ function saveToFile(
  */
 async function processItem(job, globalCache) {
   const { slug, contentType, language, source_item_id } = job;
+  console.log("And this is content_type", job.content_type);
+  console.log(
+    `[processItem Post-Destructure] contentType: ${contentType}, Type: ${typeof contentType}`,
+  );
+
   const logPrefix = ` -> [${slug} -> ${language}]`;
   const timerLabel = `Job ${slug}/${language}`; // Timer specific to this job
 
