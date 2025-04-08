@@ -106,43 +106,117 @@ const sourceApi = axios.create({
 
 // --- Helper Functions ---
 
-async function fetchReportSlugs(limit = 50) {
-  try {
-    console.log(`Fetching up to ${limit} report slugs from Strapi...`);
-    const response = await sourceApi.get(`/api/reports`, {
-      params: {
-        "pagination[limit]": limit,
-        locale: SOURCE_LOCALE,
-        fields: ["slug"], // Only fetch slug
-        sort: ["publishedAt:desc"], // Or however you want to prioritize
-      },
-    });
+/**
+ * Fetch report slugs and IDs from Strapi with pagination.
+ * Fetches up to the specified limit or all available reports if less.
+ *
+ * @param {number} limit - Maximum number of reports to fetch.
+ * @returns {Promise<Array<{slug: string, id: number}>>} Array of report slugs and IDs.
+ */
+async function fetchReportSlugs(limit) {
+  const PAGE_SIZE = 100; // Items per Strapi API request (Strapi default is often 25, 100 is usually safe & efficient)
+  let currentPage = 1;
+  const allFetchedReports = [];
+  let keepFetching = true;
+  let totalReportsAvailable = Infinity; // Assume unknown initially
 
-    if (!response.data?.data || !Array.isArray(response.data.data)) {
-      throw new Error("Invalid response format from Strapi API");
-    }
+  console.log(
+    `Fetching up to ${limit} report slugs from Strapi (page size: ${PAGE_SIZE})...`,
+  );
 
-    const reports = response.data.data;
-    const slugsAndIds = reports
-      .map((report) => ({
-        slug: report.attributes.slug,
-        id: report.id,
-      }))
-      .filter((item) => item.slug && item.id); // Ensure both slug and id exist
+  while (keepFetching && allFetchedReports.length < limit) {
+    console.log(
+      `   Fetching page ${currentPage} (limit ${PAGE_SIZE}). Total fetched so far: ${allFetchedReports.length}`,
+    );
+    try {
+      const response = await sourceApi.get(`/api/reports`, {
+        params: {
+          "pagination[page]": currentPage,
+          "pagination[pageSize]": PAGE_SIZE,
+          locale: SOURCE_LOCALE,
+          "fields[0]": "slug", // Only fetch slug field
+          "sort[0]": "id:asc", // Consistent sorting is important for pagination (use id, createdAt, or publishedAt)
+        },
+      });
 
-    console.log(`Successfully fetched ${slugsAndIds.length} report slugs/IDs`);
-    return slugsAndIds;
-  } catch (error) {
-    console.error(`Error fetching report slugs: ${error.message}`);
-    if (error.response) {
-      console.error("Strapi Error Status:", error.response.status);
-      console.error(
-        "Strapi Error Response:",
-        JSON.stringify(error.response.data, null, 2),
+      // Validate response structure
+      if (!response.data?.data || !response.data?.meta?.pagination) {
+        console.warn(
+          `   Invalid response structure received on page ${currentPage}. Stopping fetch.`,
+        );
+        keepFetching = false;
+        break; // Exit loop
+      }
+
+      const reportsOnPage = response.data.data;
+      const pagination = response.data.meta.pagination;
+      totalReportsAvailable = pagination.total; // Update total known count
+
+      if (reportsOnPage.length === 0) {
+        console.log(
+          `   Page ${currentPage} returned 0 reports. Assuming end of results.`,
+        );
+        keepFetching = false; // No more data on this or subsequent pages
+        break;
+      }
+
+      // Add fetched reports to the main list
+      allFetchedReports.push(...reportsOnPage);
+      console.log(
+        `   Fetched ${reportsOnPage.length} reports on page ${currentPage}. Total fetched: ${allFetchedReports.length} / ${totalReportsAvailable}`,
       );
+
+      // Check stopping conditions
+      if (allFetchedReports.length >= limit) {
+        console.log(
+          `   Reached or exceeded requested limit of ${limit}. Stopping fetch.`,
+        );
+        keepFetching = false;
+      } else if (currentPage >= pagination.pageCount) {
+        console.log(
+          `   Fetched the last available page (${currentPage}/${pagination.pageCount}). Stopping fetch.`,
+        );
+        keepFetching = false;
+      } else {
+        // Prepare for the next page
+        currentPage++;
+        // Optional small delay between requests to be polite to the API
+        // await new Promise(resolve => setTimeout(resolve, 200)); // e.g., 200ms delay
+      }
+    } catch (error) {
+      console.error(`   Error fetching page ${currentPage}: ${error.message}`);
+      if (error.response) {
+        console.error("   Strapi Error Status:", error.response.status);
+        console.error(
+          "   Strapi Error Response:",
+          JSON.stringify(error.response.data, null, 2),
+        );
+      }
+      console.warn("   Stopping fetch due to API error.");
+      keepFetching = false; // Stop fetching on error
+      // Depending on requirements, you might want to throw the error instead of proceeding
     }
-    throw error; // Re-throw to be caught by main
-  }
+  } // End while loop
+
+  console.log(
+    `Finished fetching reports. Total reports gathered before processing: ${allFetchedReports.length}`,
+  );
+
+  // Process the accumulated reports to get { slug, id } pairs
+  const slugsAndIds = allFetchedReports
+    .map((report) => ({
+      slug: report.attributes?.slug, // Safely access slug
+      id: report.id,
+    }))
+    .filter((item) => item.slug && item.id); // Ensure both slug and id are valid
+
+  // Slice the result to respect the original limit, in case the last page pushed us over
+  const finalResults = slugsAndIds.slice(0, limit);
+
+  console.log(
+    `Returning ${finalResults.length} valid report slugs/IDs (limit was ${limit}).`,
+  );
+  return finalResults;
 }
 
 const buildPopulateQuery = (fields) => {
