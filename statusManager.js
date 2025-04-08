@@ -6,41 +6,113 @@ const { query } = require("./db");
 // 'uploading', 'completed', 'failed_translation', 'failed_upload'
 
 /**
- * Creates initial entries for slugs/languages if they don't exist.
+ * Creates initial entries for slugs/languages if they don't exist, processing in batches.
  */
 async function initializeJobs(items, targetLangs, contentType) {
-  if (!items || items.length === 0) return;
+  if (
+    !items ||
+    items.length === 0 ||
+    !targetLangs ||
+    targetLangs.length === 0
+  ) {
+    console.log(
+      "[StatusManager] No items or target languages provided for job initialization.",
+    );
+    return;
+  }
+
   console.log(
-    `[StatusManager] Initializing/Verifying ${items.length * targetLangs.length} potential jobs...`,
+    `[StatusManager] Initializing/Verifying jobs for ${items.length} items and ${targetLangs.length} languages...`,
   );
 
-  const values = [];
-  const placeholders = [];
-  let counter = 1;
+  const BATCH_SIZE = 500; // Number of ROWS to insert per batch (adjust as needed, 500-1000 is usually safe)
+  let totalInsertedCount = 0;
+  let batchNumber = 0;
 
+  // Prepare all potential jobs first
+  const allPotentialJobs = [];
   items.forEach((item) => {
-    targetLangs.forEach((lang) => {
+    if (item.slug && item.id) {
+      // Ensure item is valid
+      targetLangs.forEach((lang) => {
+        allPotentialJobs.push({
+          slug: item.slug,
+          contentType: contentType,
+          language: lang,
+          source_item_id: item.id,
+        });
+      });
+    } else {
+      console.warn(
+        `[StatusManager Init] Skipping item due to missing slug or id:`,
+        item,
+      );
+    }
+  });
+
+  if (allPotentialJobs.length === 0) {
+    console.log(
+      "[StatusManager Init] No valid jobs to initialize after filtering.",
+    );
+    return;
+  }
+
+  console.log(
+    `[StatusManager Init] Total potential job entries to process: ${allPotentialJobs.length}`,
+  );
+
+  // Process in batches
+  for (let i = 0; i < allPotentialJobs.length; i += BATCH_SIZE) {
+    const batch = allPotentialJobs.slice(i, i + BATCH_SIZE);
+    batchNumber++;
+    console.log(
+      `[StatusManager Init] Processing Batch ${batchNumber}, Size: ${batch.length}`,
+    );
+
+    const values = [];
+    const placeholders = [];
+    let counter = 1; // Reset parameter counter for each batch
+
+    batch.forEach((job) => {
       placeholders.push(
         `($${counter++}, $${counter++}, $${counter++}, $${counter++})`,
       );
-      values.push(item.slug, contentType, lang, item.id); // slug, contentType, language, source_item_id
+      values.push(job.slug, job.contentType, job.language, job.source_item_id);
     });
-  });
 
-  const insertQuery = `
-    INSERT INTO translation_jobs (slug, content_type, language, source_item_id)
-    VALUES ${placeholders.join(", ")}
-    ON CONFLICT (slug, content_type, language) DO NOTHING;
-  `;
+    if (placeholders.length === 0) {
+      console.log(
+        `[StatusManager Init] Batch ${batchNumber} is empty. Skipping.`,
+      );
+      continue;
+    }
 
-  try {
-    const result = await query(insertQuery, values);
-    console.log(
-      `[StatusManager] Initialization complete. ${result.rowCount || 0} new jobs potentially added.`,
-    );
-  } catch (error) {
-    console.error("[StatusManager] Error initializing jobs:", error);
-  }
+    const insertQuery = `
+      INSERT INTO translation_jobs (slug, content_type, language, source_item_id)
+      VALUES ${placeholders.join(", ")}
+      ON CONFLICT (slug, content_type, language) DO NOTHING;
+    `;
+
+    try {
+      // Ensure parameters are passed correctly for THIS batch
+      const result = await query(insertQuery, values);
+      const insertedInBatch = result.rowCount || 0; // rowCount tells how many rows were actually inserted (not ignored by ON CONFLICT)
+      totalInsertedCount += insertedInBatch;
+      console.log(
+        `[StatusManager Init] Batch ${batchNumber} complete. ${insertedInBatch} new jobs added.`,
+      );
+    } catch (error) {
+      console.error(
+        `[StatusManager Init] Error processing Batch ${batchNumber}:`,
+        error,
+      );
+      // Decide how to handle batch errors: continue or stop? Let's continue for now.
+    }
+  } // End for loop
+
+  console.log(
+    `[StatusManager] Job initialization finished. Total new jobs added across all batches: ${totalInsertedCount}.`,
+  );
 }
 
 /**
