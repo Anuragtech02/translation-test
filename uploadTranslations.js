@@ -15,6 +15,7 @@ const TARGET_TOKEN = process.env.TARGET_TOKEN;
 const UPLOAD_DELAY_MS = parseInt(process.env.UPLOAD_DELAY_MS || "500", 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || "3", 10);
 const RETRY_DELAY_MS = parseInt(process.env.RETRY_DELAY_MS || "2000", 10);
+const MAX_SEO_TITLE_LENGTH = 297;
 
 const LOCALIZED_FIELDS_TO_SEND = [
   "title",
@@ -682,6 +683,55 @@ async function pushSingleTranslation(translationData) {
                 },
               );
             }
+
+            // --- START: ADD TRUNCATION LOGIC ---
+            console.log(
+              `   [SEO Truncate Check] Checking lengths for ${targetLocale}/${originalSlug}...`,
+            );
+
+            // Truncate seo.metaTitle if needed
+            if (
+              seoPayload.metaTitle &&
+              typeof seoPayload.metaTitle === "string" &&
+              seoPayload.metaTitle.length > MAX_SEO_TITLE_LENGTH
+            ) {
+              console.warn(
+                `   [Truncating] seo.metaTitle. Original length: ${seoPayload.metaTitle.length}`,
+              );
+              seoPayload.metaTitle =
+                seoPayload.metaTitle.substring(0, MAX_SEO_TITLE_LENGTH) + "...";
+              console.warn(
+                `   [Truncating] New seo.metaTitle length: ${seoPayload.metaTitle.length}`,
+              );
+            }
+
+            // Truncate seo.metaSocial[].title if needed
+            if (seoPayload.metaSocial && Array.isArray(seoPayload.metaSocial)) {
+              // Use map to create a new array with potentially modified entries
+              seoPayload.metaSocial = seoPayload.metaSocial.map(
+                (entry, index) => {
+                  if (
+                    entry.title &&
+                    typeof entry.title === "string" &&
+                    entry.title.length > MAX_SEO_TITLE_LENGTH
+                  ) {
+                    console.warn(
+                      `   [Truncating] seo.metaSocial[${index}].title. Original length: ${entry.title.length}`,
+                    );
+                    const truncatedTitle =
+                      entry.title.substring(0, MAX_SEO_TITLE_LENGTH) + "...";
+                    console.warn(
+                      `   [Truncating] New seo.metaSocial[${index}].title length: ${truncatedTitle.length}`,
+                    );
+                    // Return a *new* object with the truncated title
+                    return { ...entry, title: truncatedTitle };
+                  }
+                  // Return the original entry if no truncation is needed
+                  return entry;
+                },
+              );
+            }
+            // --- END: ADD TRUNCATION LOGIC --
 
             // 4. Assign the carefully constructed seoPayload
             payloadData.seo = seoPayload;
