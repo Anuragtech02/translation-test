@@ -123,7 +123,12 @@
                           <% jobs.forEach(job => { %>
                               <tr>
                                   <td><%= job.content_type %></td>
-                                  <td><%= job.slug %></td>
+                                  <td><%= job.slug %>
+                                   <br>
+                                    <a href="/content/<%= job.content_type %>/<%= job.slug %>" class="btn btn-sm btn-outline-secondary mt-1" target="_blank">
+                                        View Translation
+                                    </a>
+                                  </td>
                                   <td><%= job.language %></td>
                                   <td><span class="status-badge status-<%= job.status %>"><%= job.status %></span></td>
                                   <td><%= new Date(job.updated_at).toLocaleString() %></td>
