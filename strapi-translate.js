@@ -17,7 +17,7 @@ const SOURCE_TOKEN = process.env.SOURCE_TOKEN;
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const OUTPUT_DIR = process.env.OUTPUT_DIR || "/app/translations"; // Use absolute path
 const SOURCE_LOCALE = process.env.SOURCE_LOCALE || "en";
-const MAX_REPORTS = parseInt(process.env.MAX_REPORTS || "50", 10);
+const MAX_REPORTS = parseInt(process.env.MAX_REPORTS || "3200", 10); // Set desired default
 const MAX_CONCURRENT_TRANSLATIONS = parseInt(
   process.env.MAX_CONCURRENT_TRANSLATIONS || "3",
   10,
