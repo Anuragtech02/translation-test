@@ -130,7 +130,7 @@ async function getPendingTranslationJobs(limit = 50) {
        source_item_id
      FROM translation_jobs
      WHERE status = 'pending_translation' OR status = 'failed_translation'
-     ORDER BY updated_at ASC -- Process older ones first
+     ORDER BY updated_at ASC
      LIMIT $1;
    `;
   try {
