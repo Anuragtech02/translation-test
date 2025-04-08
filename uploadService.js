@@ -39,8 +39,8 @@ const statusTracker = new UploadStatusTracker("/app/upload-status.json");
  * @returns {Promise<object>} Promise resolving to { status: 'fulfilled'|'rejected', value?: any, reason?: Error, job: object }
  */
 async function processSingleUploadJob(job) {
-  const { slug, contentType, language, source_item_id, translation_file_path } =
-    job;
+  const { slug, language, source_item_id, translation_file_path } = job;
+  const contentType = job.content_type;
   const logPrefix = ` --> [Upload Job: ${slug} -> ${language}]`;
   console.log(`${logPrefix} Starting processing.`);
 
