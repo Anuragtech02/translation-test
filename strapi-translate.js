@@ -244,11 +244,8 @@ function saveToFile(
  * @param {object} globalCache - The global translation memory cache object.
  */
 async function processItem(job, globalCache) {
-  const { slug, contentType, language, source_item_id } = job;
-  console.log("And this is content_type", job.content_type);
-  console.log(
-    `[processItem Post-Destructure] contentType: ${contentType}, Type: ${typeof contentType}`,
-  );
+  const { slug, language, source_item_id } = job;
+  const contentType = job.content_type;
 
   const logPrefix = ` -> [${slug} -> ${language}]`;
   const timerLabel = `Job ${slug}/${language}`; // Timer specific to this job
