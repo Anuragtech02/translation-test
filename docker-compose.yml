@@ -1,6 +1,22 @@
 version: "3.8"
 
 services:
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile # Use the same base image/dependencies
+    container_name: translation-db-init
+    # Only needs DB connection details
+    environment:
+      - DATABASE_HOST=${EXTERNAL_DATABASE_HOST}
+      - DATABASE_PORT=${EXTERNAL_DATABASE_PORT:-5432}
+      - DATABASE_NAME=${EXTERNAL_DATABASE_NAME}
+      - DATABASE_USER=${EXTERNAL_DATABASE_USER}
+      - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD}
+    # Runs the init script once
+    command: node init-db.js
+    networks:
+      - translation-network
   translation-service:
     build:
       context: .
@@ -29,6 +45,10 @@ services:
       - DATABASE_NAME=${EXTERNAL_DATABASE_NAME} # <= DB name on external server
       - DATABASE_USER=${EXTERNAL_DATABASE_USER} # <= Username for external DB
       - DATABASE_PASSWORD=${EXTERNAL_DATABASE_PASSWORD} # <= Password for external DB
+    depends_on:
+      # Make sure init finishes (successfully) before starting
+      db-init:
+        condition: service_completed_successfully
     networks:
       - translation-network
 
@@ -89,6 +109,10 @@ services:
       - traefik.enable=true
       - traefik.http.routers.translation-viewer.rule=Host(`${COOLIFY_FQDN}`)
       - traefik.http.routers.translation-viewer.entryPoints=http
+    depends_on:
+      # Make sure init finishes (successfully) before starting
+      db-init:
+        condition: service_completed_successfully
 
 networks:
   translation-network:
