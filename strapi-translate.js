@@ -425,6 +425,29 @@ async function main() {
       MAX_REPORTS * TARGET_LANGS.length,
     );
 
+    // --- ADD IMMEDIATE LOGGING HERE ---
+    console.log(
+      `[Main Fetch Result] Fetched ${pendingJobs.length} pending jobs. Logging first few:`,
+    );
+    for (let i = 0; i < Math.min(pendingJobs.length, 5); i++) {
+      // Log first 5 or fewer
+      console.log(
+        `[Main Fetch Result] Job ${i}:`,
+        JSON.stringify(pendingJobs[i]),
+      );
+      // Explicitly check contentType right here
+      if (pendingJobs[i]) {
+        console.log(
+          `[Main Fetch Result] Job ${i} - contentType value: ${pendingJobs[i].content_type}, type: ${typeof pendingJobs[i].content_type}`,
+        );
+      } else {
+        console.log(
+          `[Main Fetch Result] Job ${i} - Job object itself is undefined/null.`,
+        );
+      }
+    }
+    // --- END IMMEDIATE LOGGING ---
+
     if (pendingJobs.length === 0) {
       console.log(
         "No jobs require translation ('pending_translation' or 'failed_translation') at this time.",
@@ -457,19 +480,25 @@ async function main() {
           running++;
           const currentJob = pendingJobs[jobIndex++];
 
-          // --- DETAILED DEBUG LOGGING for the condition ---
+          // --- Log currentJob again JUST before the check ---
+          console.log(
+            `[Main Loop Pre-Check] Processing index ${jobIndex - 1}. Job Data:`,
+            JSON.stringify(currentJob),
+          );
+          // ---
+
+          // --- Critical Check (with detailed debug logging from previous step) ---
           console.log(
             `[DEBUG Job Check ${jobIndex}] Raw Job Data:`,
             JSON.stringify(currentJob),
-          ); // Log raw data stringified
+          );
           if (currentJob) {
-            // Check if currentJob exists before accessing properties
             console.log(
               `[DEBUG Job Check ${jobIndex}] Slug Check: Value='${currentJob.slug}', Type=${typeof currentJob.slug}, Falsy=${!currentJob.slug}`,
             );
             console.log(
               `[DEBUG Job Check ${jobIndex}] ContentType Check: Value='${currentJob.contentType}', Type=${typeof currentJob.contentType}, Falsy=${!currentJob.contentType}`,
-            );
+            ); // <-- Focus here
             console.log(
               `[DEBUG Job Check ${jobIndex}] Language Check: Value='${currentJob.language}', Type=${typeof currentJob.language}, Falsy=${!currentJob.language}`,
             );
@@ -479,7 +508,7 @@ async function main() {
           } else {
             console.log(`[DEBUG Job Check ${jobIndex}] !currentJob is TRUE`);
           }
-          // --- END DEBUG LOGGING ---
+          // --- End detailed debug logging ---
 
           // --- Critical Check: Ensure job object is valid ---
           if (
